@@ -33,7 +33,7 @@ pub fn render_welcome(frame: &mut Frame, area: Rect, state: &AppState) {
 fn render_welcome_full(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let card = centered_rect(64, 24, area);
 
-    let block = welcome_card_block(theme);
+    let block = welcome_card_block(theme, &state.i18n);
     let inner = block.inner(card);
     frame.render_widget(block, card);
 
@@ -55,17 +55,17 @@ fn render_welcome_full(frame: &mut Frame, area: Rect, state: &AppState, theme: &
         .split(inner);
 
     render_mascot(frame, rows[0], state, theme);
-    centered_line(frame, rows[1], "DokTUI", Role::Text, theme);
+    centered_line(frame, rows[1], &state.i18n.t("brand-name"), Role::Text, theme);
     centered_line(
         frame,
         rows[2],
-        "local TUI for remote deployments",
+        &state.i18n.t("brand-tagline"),
         Role::TextMuted,
         theme,
     );
     hrule(frame, rows[3], theme);
     render_ssh_key_box(frame, rows[4], state, theme);
-    render_stepper(frame, rows[6], theme);
+    render_stepper(frame, rows[6], state, theme);
     hrule(frame, rows[7], theme);
     render_actions(frame, rows[8], state, theme);
 
@@ -73,7 +73,7 @@ fn render_welcome_full(frame: &mut Frame, area: Rect, state: &AppState, theme: &
         centered_line(frame, rows[9], msg, Role::TextMuted, theme);
     } else {
         frame.render_widget(
-            Paragraph::new(welcome_footer_hint(theme)).alignment(Alignment::Center),
+            Paragraph::new(welcome_footer_hint(state)).alignment(Alignment::Center),
             rows[9],
         );
     }
@@ -85,7 +85,7 @@ fn render_welcome_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
     // Fill the available height instead of a fixed-size card.
     let card = centered_rect(area.width.min(64), area.height, area);
 
-    let block = welcome_card_block(theme);
+    let block = welcome_card_block(theme, &state.i18n);
     let inner = block.inner(card);
     frame.render_widget(block, card);
 
@@ -101,9 +101,9 @@ fn render_welcome_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
         ])
         .split(inner);
 
-    centered_line(frame, rows[0], "DokTUI · local TUI", Role::Text, theme);
+    centered_line(frame, rows[0], &state.i18n.t("brand-tagline-short"), Role::Text, theme);
     render_ssh_key_box(frame, rows[1], state, theme);
-    render_stepper(frame, rows[2], theme);
+    render_stepper(frame, rows[2], state, theme);
     render_actions_compact(frame, rows[3], state, theme);
 
     if rows[4].height > 0 {
@@ -111,7 +111,7 @@ fn render_welcome_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
             centered_line(frame, rows[4], msg, Role::TextMuted, theme);
         } else {
             frame.render_widget(
-                Paragraph::new(welcome_footer_hint(theme)).alignment(Alignment::Center),
+                Paragraph::new(welcome_footer_hint(state)).alignment(Alignment::Center),
                 rows[4],
             );
         }
@@ -134,9 +134,10 @@ fn render_actions_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
     state.push_click(cols[1], Message::GoAddServer);
     state.push_click(cols[3], Message::Quit);
 
+    let i18n = &state.i18n;
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            "⏎ Add server",
+            i18n.t("welcome-btn-add-server"),
             theme.style_bold(Role::Primary),
         )]))
         .alignment(Alignment::Center),
@@ -150,7 +151,7 @@ fn render_actions_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            "q Quit",
+            i18n.t("welcome-btn-quit"),
             theme.style(Role::TextMuted),
         )]))
         .alignment(Alignment::Center),
@@ -158,13 +159,14 @@ fn render_actions_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
     );
 }
 
-fn welcome_footer_hint(theme: &Theme) -> Line<'static> {
+fn welcome_footer_hint(state: &AppState) -> Line<'static> {
+    let i18n = &state.i18n;
     shortcut_hint_line(
-        theme,
+        &state.theme,
         &[
-            ("⏎", "add server ·"),
-            ("c", "copy key ·"),
-            ("q", "quit"),
+            ("⏎", &i18n.t("welcome-hint-add")),
+            ("c", &i18n.t("welcome-hint-copy")),
+            ("q", &i18n.t("welcome-hint-quit")),
         ],
     )
 }
@@ -235,7 +237,8 @@ fn render_mascot(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
     );
 }
 
-fn render_stepper(frame: &mut Frame, area: Rect, theme: &Theme) {
+fn render_stepper(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
+    let i18n = &state.i18n;
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Ratio(1, 3); 3])
@@ -249,26 +252,28 @@ fn render_stepper(frame: &mut Frame, area: Rect, theme: &Theme) {
     };
 
     frame.render_widget(
-        Paragraph::new(step("1", "Register", Role::Primary)).alignment(Alignment::Center),
+        Paragraph::new(step("1", &i18n.t("welcome-step-register"), Role::Primary))
+            .alignment(Alignment::Center),
         cols[0],
     );
     frame.render_widget(
-        Paragraph::new(step("2", "Check Docker", Role::Accent)).alignment(Alignment::Center),
+        Paragraph::new(step("2", &i18n.t("welcome-step-docker"), Role::Accent)).alignment(Alignment::Center),
         cols[1],
     );
     frame.render_widget(
-        Paragraph::new(step("3", "Deploy", Role::Success)).alignment(Alignment::Center),
+        Paragraph::new(step("3", &i18n.t("welcome-step-deploy"), Role::Success)).alignment(Alignment::Center),
         cols[2],
     );
 }
 
 fn render_ssh_key_box(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
+    let i18n = &state.i18n;
     let b = Block::default()
         .borders(Borders::ALL)
         .border_set(border::PLAIN)
         .border_style(theme.style(Role::Border))
         .title(Span::styled(
-            " ◆ dedicated ssh key ",
+            format!(" {} ", i18n.t("welcome-ssh-box-title")),
             theme.style(Role::TextMuted),
         ))
         .style(Style::default().bg(theme.color(Role::Bg)));
@@ -288,7 +293,7 @@ fn render_ssh_key_box(frame: &mut Frame, area: Rect, state: &AppState, theme: &T
     let line = Line::from(vec![
         Span::styled(key, success_style(theme)),
         Span::raw(" "),
-        Span::styled("[c] copy", accent_style(theme)),
+        Span::styled(i18n.t("welcome-ssh-copy"), accent_style(theme)),
     ]);
     frame.render_widget(
         Paragraph::new(line).alignment(Alignment::Center),
@@ -311,10 +316,11 @@ fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
     let quit_hovered = state.is_hovered(cols[3]);
     let add_focused = state.is_hovered(cols[1]) || !quit_hovered;
 
+    let i18n = &state.i18n;
     button(
         frame,
         cols[1],
-        "⏎ Add server",
+        &i18n.t("welcome-btn-add-server"),
         Role::Primary,
         Message::GoAddServer,
         add_focused,
@@ -324,7 +330,7 @@ fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
     button(
         frame,
         cols[3],
-        "q Quit",
+        &i18n.t("welcome-btn-quit"),
         Role::Border,
         Message::Quit,
         quit_hovered,
@@ -335,17 +341,19 @@ fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
 
 pub fn render_add_server(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Register SSH Server ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("form-add-server-title"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let form = &state.server_form;
     let fields = [
-        ("Name", &form.name, form.active_field == 0),
-        ("Host", &form.host, form.active_field == 1),
-        ("Port", &form.port, form.active_field == 2),
-        ("User", &form.user, form.active_field == 3),
-        ("ACME email", &form.acme_email, form.active_field == 4),
+        (i18n.t("form-name"), form.name.as_str(), form.active_field == 0),
+        (i18n.t("form-host"), form.host.as_str(), form.active_field == 1),
+        (i18n.t("form-port"), form.port.as_str(), form.active_field == 2),
+        (i18n.t("form-user"), form.user.as_str(), form.active_field == 3),
+        (i18n.t("form-acme-email"), form.acme_email.as_str(), form.active_field == 4),
     ];
 
     let lines: Vec<ratatui::text::Line> = fields
@@ -360,23 +368,26 @@ pub fn render_add_server(frame: &mut Frame, area: ratatui::layout::Rect, state: 
         })
         .collect();
 
+    let hint_title = format!(" {} ", i18n.t("form-add-server-hint"));
     frame.render_widget(
-        Paragraph::new(lines).block(panel_block(" Tab/Shift+Tab • Enter save • Esc back ", theme)),
+        Paragraph::new(lines).block(panel_block(&hint_title, theme)),
         inner,
     );
 }
 
 pub fn render_host_key(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let prompt = state.host_key_prompt.as_ref();
-    let block = panel_block(" Unknown Host Key ", theme).style(title_style(theme));
+    let panel_title = format!(" {} ", i18n.t("hostkey-title"));
+    let block = panel_block(&panel_title, theme).style(title_style(theme));
     let text = if let Some(p) = prompt {
-        format!(
-            "Host {} has an unknown fingerprint:\n\n  {}\n\nTrust this host? [y/n]",
-            p.host, p.fingerprint
+        i18n.t_fmt(
+            "hostkey-trust",
+            &[("host", &p.host), ("fingerprint", &p.fingerprint)],
         )
     } else {
-        "No host key prompt active".into()
+        i18n.t("hostkey-none")
     };
     frame.render_widget(
         Paragraph::new(text).wrap(Wrap { trim: true }).block(block),

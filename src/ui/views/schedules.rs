@@ -13,7 +13,9 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     }
 
     let theme = &state.theme;
-    let block = panel_block(" Schedules ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("nav-schedules"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -22,8 +24,9 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         .constraints([Constraint::Length(3), Constraint::Min(6), Constraint::Min(8)])
         .split(inner);
 
+    let subtitle = i18n.t("schedules-title");
     frame.render_widget(
-        Paragraph::new(header_line(theme, "restart policies & cron jobs")),
+        Paragraph::new(header_line(theme, &subtitle)),
         chunks[0],
     );
 
@@ -34,11 +37,12 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-            ("a", "add cron"),
-            ("t", "toggle"),
-            ("d", "delete"),
-            ("j/k", "select"),
-        ])),
+                ("a", &i18n.t("schedules-shortcut-add")),
+                ("t", &i18n.t("schedules-shortcut-toggle")),
+                ("d", &i18n.t("schedules-shortcut-delete")),
+                ("j/k", &i18n.t("schedules-shortcut-select")),
+            ],
+        )),
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y + inner.height.saturating_sub(1),
@@ -50,13 +54,15 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
 fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Docker restart policies ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("schedules-restart-policies"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     if state.loading && state.schedules.is_empty() {
         frame.render_widget(
-            Paragraph::new("Loading…").style(muted_style(theme)),
+            Paragraph::new(i18n.t("schedules-loading")).style(muted_style(theme)),
             inner,
         );
         return;
@@ -64,7 +70,7 @@ fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state
 
     if state.schedules.is_empty() {
         frame.render_widget(
-            Paragraph::new("No containers — connect to a server under Projects.")
+            Paragraph::new(i18n.t("schedules-no-containers"))
                 .style(muted_style(theme))
                 .wrap(Wrap { trim: true }),
             inner,
@@ -76,9 +82,13 @@ fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state
         .schedules
         .iter()
         .map(|s| {
-            ListItem::new(format!(
-                "{} — restart: {} ({})",
-                s.name, s.restart_policy, s.status
+            ListItem::new(i18n.t_fmt(
+                "schedules-restart-line",
+                &[
+                    ("name", &s.name),
+                    ("policy", &s.restart_policy),
+                    ("status", &s.status),
+                ],
             ))
         })
         .collect();
@@ -87,17 +97,17 @@ fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state
 
 fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Cron jobs (runs while DokTUI is open) ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("schedules-cron-panel"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     if state.cron_jobs.is_empty() {
         frame.render_widget(
-            Paragraph::new(
-                "No cron jobs yet.\nPress a to schedule container restarts or compose redeploys.\nExample: 0 0 3 * * * = daily at 03:00 UTC.",
-            )
-            .style(muted_style(theme))
-            .wrap(Wrap { trim: true }),
+            Paragraph::new(i18n.t("schedules-no-jobs"))
+                .style(muted_style(theme))
+                .wrap(Wrap { trim: true }),
             inner,
         );
         return;
@@ -109,11 +119,20 @@ fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
         .enumerate()
         .map(|(idx, job)| {
             let action = match &job.action {
-                CronAction::RestartContainer { container } => format!("restart {container}"),
-                CronAction::Redeploy { remote_dir } => format!("redeploy {remote_dir}"),
+                CronAction::RestartContainer { container } => {
+                    i18n.t_fmt("schedules-action-restart", &[("target", container)])
+                }
+                CronAction::Redeploy { remote_dir } => {
+                    i18n.t_fmt("schedules-action-redeploy", &[("target", remote_dir)])
+                }
             };
-            let status = if job.enabled { "on" } else { "off" };
-            let last = job.last_run.as_deref().unwrap_or("never");
+            let status = if job.enabled {
+                i18n.t("schedules-status-on")
+            } else {
+                i18n.t("schedules-status-off")
+            };
+            let never = i18n.t("schedules-last-never");
+            let last = job.last_run.as_deref().unwrap_or(&never);
             let line = format!(
                 "{} {} — {} — {} [{}] last: {}",
                 if idx == state.selected_cron {
@@ -140,31 +159,32 @@ fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
 
 fn render_cron_form(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let form = state.cron_form.as_ref().expect("cron form");
     let popup = centered_rect(70, 14, area);
     frame.render_widget(Clear, popup);
 
-    let block = panel_block(" New cron job (Esc cancel, Enter save) ", theme);
+    let panel_title = format!(" {} ", i18n.t("schedules-cron-form-title"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
     let action_label = match form.action_kind {
-        CronActionKind::Restart => "restart container",
-        CronActionKind::Redeploy => "redeploy compose dir",
+        CronActionKind::Restart => i18n.t("schedules-form-restart"),
+        CronActionKind::Redeploy => i18n.t("schedules-form-redeploy"),
     };
     let target_label = match form.action_kind {
-        CronActionKind::Restart => "Container name",
-        CronActionKind::Redeploy => "Remote dir",
+        CronActionKind::Restart => i18n.t("schedules-form-container"),
+        CronActionKind::Redeploy => i18n.t("schedules-form-remote-dir"),
     };
 
-    let fields: [(&str, String, bool); 4] = [
-        ("Label", form.label.clone(), form.active_field == 0),
-        ("Cron", form.expression.clone(), form.active_field == 1),
-        (
-            "Action (Space toggles)",
-            action_label.into(),
-            form.active_field == 2,
-        ),
+    let label_field = i18n.t("schedules-form-label");
+    let cron_field = i18n.t("schedules-form-cron");
+    let action_field = i18n.t("schedules-form-action");
+    let fields: [(String, String, bool); 4] = [
+        (label_field, form.label.clone(), form.active_field == 0),
+        (cron_field, form.expression.clone(), form.active_field == 1),
+        (action_field, action_label, form.active_field == 2),
         (target_label, form.target.clone(), form.active_field == 3),
     ];
 

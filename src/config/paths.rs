@@ -43,11 +43,16 @@ pub fn themes_dir() -> Result<PathBuf> {
     Ok(config_dir()?.join("themes"))
 }
 
+pub fn locales_dir() -> Result<PathBuf> {
+    Ok(config_dir()?.join("locales"))
+}
+
 pub fn ensure_dirs() -> Result<()> {
     let config = config_dir()?;
     let data = data_dir()?;
     std::fs::create_dir_all(&config)?;
     std::fs::create_dir_all(&data)?;
     let _ = std::fs::create_dir_all(themes_dir()?);
+    let _ = std::fs::create_dir_all(locales_dir()?);
     Ok(())
 }

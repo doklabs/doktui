@@ -7,12 +7,15 @@ use crate::ui::theme::{connection_badge, header_line, panel_block, shortcut_line
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Projects ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("nav-projects"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let subtitle = i18n.t("servers-title");
     frame.render_widget(
-        Paragraph::new(header_line(theme, "SSH targets")),
+        Paragraph::new(header_line(theme, &subtitle)),
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y,
@@ -32,7 +35,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         })
         .map(|(i, s)| {
             let selected = state.selected_server == Some(s.id);
-            let (badge, _) = connection_badge(theme, state.connection_state(s.id));
+            let (badge, _) = connection_badge(theme, i18n, state.connection_state(s.id));
             let prefix = if selected { "▸ " } else { "  " };
             ListItem::new(format!(
                 "{prefix}[{}] {} — {}@{}:{} {badge}",
@@ -59,11 +62,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("1-9", "select"),
-                ("c", "connect"),
-                ("p", "provision"),
-                ("a", "add"),
-                ("b", "back"),
+                ("1-9", &i18n.t("servers-shortcut-select")),
+                ("c", &i18n.t("servers-shortcut-connect")),
+                ("p", &i18n.t("servers-shortcut-provision")),
+                ("a", &i18n.t("servers-shortcut-add")),
+                ("b", &i18n.t("servers-shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

@@ -125,6 +125,10 @@ pub struct AppConfig {
     pub cron_jobs: Vec<CronJob>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_locale")]
+    pub locale: String,
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: u16,
     #[serde(default = "default_true")]
     pub mouse: bool,
     #[serde(default)]
@@ -145,6 +149,14 @@ fn default_theme() -> String {
     "gruvbox-material".into()
 }
 
+fn default_locale() -> String {
+    "en".into()
+}
+
+fn default_sidebar_width() -> u16 {
+    22
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -157,6 +169,8 @@ impl Default for AppConfig {
             acme_challenge: AcmeChallenge::default(),
             cron_jobs: Vec::new(),
             theme: default_theme(),
+            locale: default_locale(),
+            sidebar_width: default_sidebar_width(),
             mouse: true,
             onboarding_complete: false,
             servers: Vec::new(),

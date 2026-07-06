@@ -6,6 +6,7 @@ use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
 use crate::config::{AppConfig, ServerConfig};
+use crate::i18n::I18n;
 use crate::services::docker::DockerController;
 use crate::services::provision::RemoteProvisioner;
 use crate::services::routing::{self, DomainSpec};
@@ -42,6 +43,7 @@ pub struct CommandBus {
     tx: mpsc::UnboundedSender<Message>,
     config: Arc<Mutex<AppConfig>>,
     secrets: Arc<Mutex<SecretsManager>>,
+    i18n: I18n,
     ssh_manager: SshManager,
     sessions: Arc<Mutex<std::collections::HashMap<Uuid, SshSession>>>,
 }
@@ -51,6 +53,7 @@ impl CommandBus {
         tx: mpsc::UnboundedSender<Message>,
         config: Arc<Mutex<AppConfig>>,
         secrets: Arc<Mutex<SecretsManager>>,
+        i18n: I18n,
         auto_reconnect: bool,
         ssh_status_tx: mpsc::UnboundedSender<crate::services::ssh::SshStatus>,
     ) -> Self {
@@ -58,6 +61,7 @@ impl CommandBus {
             tx,
             config,
             secrets,
+            i18n,
             ssh_manager: SshManager::new(ssh_status_tx, auto_reconnect),
             sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
@@ -94,12 +98,11 @@ impl CommandBus {
     pub fn load_containers(&self, server_id: Uuid) {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
+        let no_ssh = self.i18n.t("cmd-no-ssh-session");
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::ContainersLoaded(Err(
-                    "no active SSH session — connect to a server first".into(),
-                )));
+                let _ = tx.send(Message::ContainersLoaded(Err(no_ssh)));
                 return;
             };
             let result = DockerController::list_containers(session)
@@ -113,12 +116,12 @@ impl CommandBus {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
         let secrets = self.secrets.clone();
+        let no_ssh = self.i18n.t("cmd-no-ssh");
+        let no_containers = self.i18n.t("cmd-no-containers-logs");
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::LogsLoaded(Err(
-                    "no active SSH session".into(),
-                )));
+                let _ = tx.send(Message::LogsLoaded(Err(no_ssh)));
                 return;
             };
             let name = match container_name {
@@ -126,9 +129,7 @@ impl CommandBus {
                 None => match DockerController::list_containers(session).await {
                     Ok(list) if !list.is_empty() => list[0].name.clone(),
                     Ok(_) => {
-                        let _ = tx.send(Message::LogsLoaded(Ok(vec![
-                            "no containers to show logs for".into(),
-                        ])));
+                        let _ = tx.send(Message::LogsLoaded(Ok(vec![no_containers])));
                         return;
                     }
                     Err(e) => {
@@ -161,12 +162,11 @@ impl CommandBus {
     pub fn load_metrics(&self, server_id: Uuid) {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
+        let no_ssh = self.i18n.t("cmd-no-ssh-session");
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::MetricsLoaded(Err(
-                    "no active SSH session — connect to a server first".into(),
-                )));
+                let _ = tx.send(Message::MetricsLoaded(Err(no_ssh)));
                 return;
             };
             let result = DockerController::container_stats(session)
@@ -179,12 +179,11 @@ impl CommandBus {
     pub fn load_schedules(&self, server_id: Uuid) {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
+        let no_ssh = self.i18n.t("cmd-no-ssh-session");
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::SchedulesLoaded(Err(
-                    "no active SSH session — connect to a server first".into(),
-                )));
+                let _ = tx.send(Message::SchedulesLoaded(Err(no_ssh)));
                 return;
             };
             let result = DockerController::list_restart_schedules(session)
@@ -207,6 +206,7 @@ impl CommandBus {
     pub fn save_secret(&self, key: String, value: String) {
         let tx = self.tx.clone();
         let secrets = self.secrets.clone();
+        let saved = self.i18n.t_fmt("cmd-saved-secret", &[("key", &key)]);
         tokio::spawn(async move {
             let save_result = {
                 let mut guard = secrets.lock().await;
@@ -216,7 +216,7 @@ impl CommandBus {
                 Ok(()) => {
                     let keys = secrets.lock().await.list_keys();
                     let _ = tx.send(Message::SecretsLoaded(keys));
-                    let _ = tx.send(Message::SetStatus(format!("saved secret `{key}`")));
+                    let _ = tx.send(Message::SetStatus(saved));
                 }
                 Err(e) => {
                     let _ = tx.send(Message::SetError(e));
@@ -228,6 +228,7 @@ impl CommandBus {
     pub fn delete_secret(&self, key: String) {
         let tx = self.tx.clone();
         let secrets = self.secrets.clone();
+        let removed = self.i18n.t_fmt("cmd-removed-secret", &[("key", &key)]);
         tokio::spawn(async move {
             let delete_result = {
                 let mut guard = secrets.lock().await;
@@ -237,7 +238,7 @@ impl CommandBus {
                 Ok(()) => {
                     let keys = secrets.lock().await.list_keys();
                     let _ = tx.send(Message::SecretsLoaded(keys));
-                    let _ = tx.send(Message::SetStatus(format!("removed secret `{key}`")));
+                    let _ = tx.send(Message::SetStatus(removed));
                 }
                 Err(e) => {
                     let _ = tx.send(Message::SetError(e));
@@ -251,6 +252,7 @@ impl CommandBus {
         let config = self.config.clone();
         let ssh_manager = self.ssh_manager.clone();
         let sessions = self.sessions.clone();
+        let server_not_found = self.i18n.t("cmd-server-not-found");
 
         tokio::spawn(async move {
             let server = {
@@ -258,7 +260,7 @@ impl CommandBus {
                 cfg.server(server_id).cloned()
             };
             let Some(server) = server else {
-                let _ = tx.send(Message::SetError("server not found".into()));
+                let _ = tx.send(Message::SetError(server_not_found));
                 return;
             };
 
@@ -306,6 +308,7 @@ impl CommandBus {
         let secrets = self.secrets.clone();
         let ssh_manager = self.ssh_manager.clone();
         let sessions = self.sessions.clone();
+        let server_not_found = self.i18n.t("cmd-server-not-found");
 
         tokio::spawn(async move {
             let server = {
@@ -313,7 +316,7 @@ impl CommandBus {
                 cfg.server(server_id).cloned()
             };
             let Some(server) = server else {
-                let _ = tx.send(Message::ProvisionDone(Err("server not found".into())));
+                let _ = tx.send(Message::ProvisionDone(Err(server_not_found)));
                 return;
             };
 
@@ -380,10 +383,15 @@ impl CommandBus {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
         let action = action.to_string();
+        let no_ssh = self.i18n.t("cmd-no-ssh");
+        let ok_msg = self.i18n.t_fmt(
+            "cmd-container-action-ok",
+            &[("action", &action), ("name", &name)],
+        );
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::SetError("no active SSH session".into()));
+                let _ = tx.send(Message::SetError(no_ssh));
                 return;
             };
             let result = match action.as_str() {
@@ -395,7 +403,7 @@ impl CommandBus {
             };
             match result {
                 Ok(out) if out.exit_code == 0 => {
-                    let _ = tx.send(Message::SetStatus(format!("{action} {name} OK")));
+                    let _ = tx.send(Message::SetStatus(ok_msg));
                     let reload = DockerController::list_containers(session)
                         .await
                         .map_err(|e| e.to_string());
@@ -436,14 +444,14 @@ impl CommandBus {
         let sessions = self.sessions.clone();
         let secrets = self.secrets.clone();
         let config = self.config.clone();
+        let connect_first = self.i18n.t("cmd-connect-before-deploy");
+        let traefik_not_running = self.i18n.t("cmd-traefik-not-running");
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let session = match guard.get_mut(&server_id) {
                 Some(s) => s,
                 None => {
-                    let _ = tx.send(Message::DeployDone(Err(
-                        "connect to server before deploying".into(),
-                    )));
+                    let _ = tx.send(Message::DeployDone(Err(connect_first)));
                     return;
                 }
             };
@@ -460,9 +468,7 @@ impl CommandBus {
                         }
                     }
                     Ok(TraefikStatus::NotRunning) => {
-                        let _ = tx.send(Message::DeployDone(Err(
-                            "Traefik is not running — provision the server first".into(),
-                        )));
+                        let _ = tx.send(Message::DeployDone(Err(traefik_not_running)));
                         return;
                     }
                     Ok(TraefikStatus::Healthy) => {}
@@ -508,6 +514,7 @@ impl CommandBus {
         let tx = self.tx.clone();
         let config = self.config.clone();
         let sessions = self.sessions.clone();
+        let cron_not_found = self.i18n.t("cmd-cron-not-found");
         tokio::spawn(async move {
             let job = {
                 let cfg = config.lock().await;
@@ -516,7 +523,7 @@ impl CommandBus {
             let Some(job) = job else {
                 let _ = tx.send(Message::CronJobDone {
                     id: job_id,
-                    result: Err("cron job not found".into()),
+                    result: Err(cron_not_found),
                 });
                 return;
             };
@@ -541,13 +548,13 @@ impl CommandBus {
 
             let result = match &job.action {
                 crate::config::CronAction::RestartContainer { container } => {
-                    DockerController::restart(session, container)
+                    DockerController::restart(session, container.as_str())
                         .await
                         .map(|_| format!("restarted {container}"))
                         .map_err(|e| e.to_string())
                 }
                 crate::config::CronAction::Redeploy { remote_dir } => {
-                    DockerController::redeploy_compose(session, remote_dir)
+                    DockerController::redeploy_compose(session, remote_dir.as_str())
                         .await
                         .map(|_| format!("redeployed {remote_dir}"))
                         .map_err(|e| e.to_string())

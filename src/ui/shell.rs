@@ -13,6 +13,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(20), Constraint::Length(22)])
@@ -24,13 +25,17 @@ pub fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
         .selected_server
         .map(|id| state.connection_state(id))
         .unwrap_or(crate::services::ssh::ConnectionState::Disconnected);
-    let (conn_label, conn_style) = connection_badge(theme, conn);
+    let (conn_label, conn_style) = connection_badge(theme, i18n, conn);
 
     let left = Line::from(vec![
         Span::styled(mascot, theme.style_bold(Role::Accent)),
         Span::raw("  "),
         Span::styled(
-            format!("{} · {}", crate::ui::theme::BRAND, crate::ui::theme::SUBTITLE),
+            format!(
+                "{} · {}",
+                i18n.t("brand-name"),
+                i18n.t("brand-subtitle")
+            ),
             theme.style_bold(Role::Text),
         ),
     ]);
@@ -56,6 +61,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
 
 pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -69,16 +75,23 @@ pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
         shortcut_line(
             theme,
             &[
-                ("↑↓", "nav"),
-                ("↵", "open"),
-                ("d", "deploy"),
-                ("e", "editor"),
-                ("/", "search"),
-                ("q", "quit"),
+                ("↑↓", &i18n.t("shortcut-nav")),
+                ("↵", &i18n.t("shortcut-open")),
+                ("d", &i18n.t("shortcut-deploy")),
+                ("e", &i18n.t("shortcut-editor")),
+                ("/", &i18n.t("shortcut-search")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )
     } else {
-        shortcut_line(theme, &[("↵", "continue"), ("Esc", "back"), ("q", "quit")])
+        shortcut_line(
+            theme,
+            &[
+                ("↵", &i18n.t("shortcut-continue")),
+                ("Esc", &i18n.t("shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
+            ],
+        )
     };
     frame.render_widget(
         Paragraph::new(keys).style(Style::default().bg(theme.color(Role::Bg))),
@@ -86,8 +99,9 @@ pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
     );
 
     let spin = anim::spinner(theme, state.anim_tick);
+    let fps = i18n.t_fmt("shortcut-fps", &[("spin", &spin)]);
     frame.render_widget(
-        Paragraph::new(format!("~15fps {spin}")).style(theme.style(Role::TextMuted)),
+        Paragraph::new(fps).style(theme.style(Role::TextMuted)),
         chunks[1],
     );
 
@@ -95,7 +109,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
         .selected_server
         .map(|id| state.connection_state(id))
         .unwrap_or(crate::services::ssh::ConnectionState::Disconnected);
-    let (label, style) = connection_badge(theme, conn);
+    let (label, style) = connection_badge(theme, i18n, conn);
     frame.render_widget(
         Paragraph::new(label)
             .style(style.add_modifier(Modifier::BOLD))

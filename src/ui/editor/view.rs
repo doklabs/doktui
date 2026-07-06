@@ -11,9 +11,10 @@ use super::VimMode;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let Some(editor) = &state.editor else {
         frame.render_widget(
-            Paragraph::new("no editor session"),
+            Paragraph::new(i18n.t("editor-no-session")),
             area,
         );
         return;
@@ -21,11 +22,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mode_label = if editor.vim.enabled {
         match editor.vim.mode {
-            VimMode::Normal => "NORMAL",
-            VimMode::Insert => "INSERT",
+            VimMode::Normal => i18n.t("editor-mode-normal"),
+            VimMode::Insert => i18n.t("editor-mode-insert"),
         }
     } else {
-        "EDIT"
+        i18n.t("editor-mode-edit")
     };
 
     let dirty = if editor.dirty { " •" } else { "" };
@@ -68,11 +69,8 @@ fn editor_clamp_scroll(state: &AppState, visible_rows: usize) {
     let _ = (state, visible_rows);
 }
 
-pub fn render_footer_hint(theme: &crate::ui::theme::Theme) -> Line<'static> {
+pub fn render_footer_hint(theme: &crate::ui::theme::Theme, i18n: &crate::i18n::I18n) -> Line<'static> {
     Line::from(vec![
-        ratatui::text::Span::styled("[Ctrl+S]", accent_style(theme)),
-        ratatui::text::Span::raw(" save  "),
-        ratatui::text::Span::styled("[Esc]", accent_style(theme)),
-        ratatui::text::Span::raw(" back"),
+        ratatui::text::Span::styled(i18n.t("editor-footer"), accent_style(theme)),
     ])
 }

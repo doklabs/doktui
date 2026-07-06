@@ -46,14 +46,18 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         let body = outer[1];
         let (sidebar, content) = layout::split_shell(frame, body, state);
         layout::render_sidebar(frame, sidebar, state);
+        layout::render_gutter(frame, state);
         render_content(frame, content, state);
 
         shell::render_footer(frame, outer[2], state);
 
         if let Some(notice) = &state.update_notice {
-            let msg = format!(
-                "{} {} available — run `doktui update`",
-                theme.glyphs.star, notice.latest
+            let msg = state.i18n.t_fmt(
+                "status-update-available",
+                &[
+                    ("star", &theme.glyphs.star),
+                    ("version", &notice.latest),
+                ],
             );
             frame.render_widget(
                 Paragraph::new(msg)
@@ -97,15 +101,18 @@ fn render_content(frame: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let mut text = String::new();
     if state.loading {
-        text.push_str(&format!("{} working…  ", anim::spinner(theme, state.anim_tick)));
+        let spin = anim::spinner(theme, state.anim_tick);
+        text.push_str(&i18n.t_fmt("status-working", &[("spin", &spin)]));
+        text.push_str("  ");
     }
     if let Some(err) = &state.error_message {
         let suffix = if state.error_detail.is_some() {
-            "  (E = full error)"
+            format!("  {}", i18n.t("status-error-suffix"))
         } else {
-            ""
+            String::new()
         };
         frame.render_widget(
             Paragraph::new(format!("{text}{err}{suffix}"))
@@ -119,7 +126,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         text.push_str(msg);
     }
     if text.is_empty() {
-        text = "Ctrl+C quit • Ctrl+F search • Tab focus".into();
+        text = i18n.t("status-default-hint");
     }
     frame.render_widget(
         Paragraph::new(text)

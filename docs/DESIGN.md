@@ -397,7 +397,31 @@ Both share the same structure; the only difference is TOML data — proof the sy
 
 ---
 
-## 9. Phased Implementation
+## 9. Localization (i18n)
+
+UI copy lives in **Fluent** (`.ftl`) files, not in Rust string literals.
+
+| Location | Purpose |
+|----------|---------|
+| `locales/en.ftl` (repo) | Bundled English default, embedded at compile time |
+| `~/.config/doktui/locales/{locale}.ftl` | User overrides without recompiling |
+
+Set `locale = "en"` in `config.toml`. If a locale file is missing, DokTUI falls back to embedded English and shows a one-line notice.
+
+Views resolve strings via `state.i18n.t("key")` or `state.i18n.t_fmt("key", &[("name", value)])`. Keys use dot notation (`nav.home`, `welcome-btn-add-server`).
+
+---
+
+## 10. Sidebar layout
+
+- Default width: **22 columns** (`sidebar_width` in config).
+- Resize: drag the **gutter** (`│` between sidebar and content) or press **`[` / `]`** while the sidebar is focused (Tab).
+- Clamped between **12** columns and `terminal_width − 10` (minimum content width).
+- `ui_mode` (compact/overlay) affects hints and styling only — not width.
+
+---
+
+## 11. Phased Implementation
 
 1. **Phase 1 — Theme foundation.** `model.rs` + `resolve.rs` + `registry.rs`, embed a default, refactor the old `theme.rs` → semantic roles. Replace all literal colors in views with `theme.color(Role::…)`.
 2. **Phase 2 — Animation.** `anim.rs` (spinner/marching/pulse), wired to `anim_tick`, parameters from `Motion`.
@@ -406,7 +430,7 @@ Both share the same structure; the only difference is TOML data — proof the sy
 
 ---
 
-## 10. Open Questions
+## 12. Open Questions
 
 - Role names (`Role`) — which keys are frozen as the public contract? (Adding a role later is safe; renaming one is breaking.)
 - May a theme define layout (sidebar width, etc.) or only colors/glyphs/motion in v1? (Recommendation: v1 is cosmetic only, for simplicity.)

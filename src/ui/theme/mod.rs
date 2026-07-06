@@ -10,6 +10,7 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders};
 
+use crate::i18n::I18n;
 use crate::services::ssh::ConnectionState;
 
 pub const BRAND: &str = "DokTUI";
@@ -70,22 +71,26 @@ pub fn shortcut_line(theme: &Theme, items: &[(&str, &str)]) -> Line<'static> {
     Line::from(spans)
 }
 
-pub fn connection_badge(theme: &Theme, state: ConnectionState) -> (String, Style) {
+pub fn border_style(theme: &Theme) -> Style {
+    theme.style(Role::Border)
+}
+
+pub fn connection_badge(theme: &Theme, i18n: &I18n, state: ConnectionState) -> (String, Style) {
     match state {
         ConnectionState::Connected => (
-            format!("{} online", theme.glyphs.dot_on),
+            i18n.t_fmt("conn-online", &[("dot", &theme.glyphs.dot_on)]),
             success_style(theme),
         ),
         ConnectionState::Connecting => (
-            format!("{} connecting", theme.glyphs.dot_warn),
+            i18n.t_fmt("conn-connecting", &[("dot", &theme.glyphs.dot_warn)]),
             warning_style(theme),
         ),
         ConnectionState::Reconnecting => (
-            format!("↻ reconnecting",),
+            i18n.t("conn-reconnecting"),
             warning_style(theme),
         ),
         ConnectionState::Disconnected => (
-            format!("{} offline", theme.glyphs.dot_off),
+            i18n.t_fmt("conn-offline", &[("dot", &theme.glyphs.dot_off)]),
             muted_style(theme),
         ),
     }
@@ -126,13 +131,13 @@ pub const BORDER_DASHED: border::Set = border::Set {
     horizontal_bottom: "┄",
 };
 
-pub fn welcome_card_block(theme: &Theme) -> Block<'static> {
+pub fn welcome_card_block(theme: &Theme, i18n: &I18n) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_set(border::PLAIN)
         .border_style(theme.style(Role::Primary))
         .title(Span::styled(
-            " ▓▒░ getting started ",
+            format!(" ▓▒░ {} ", i18n.t("card-getting-started")),
             theme.style(Role::TextMuted),
         ))
         .style(Style::default().bg(theme.color(Role::Surface)))

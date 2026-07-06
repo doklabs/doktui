@@ -38,6 +38,9 @@ pub enum Message {
     ErrorScrollUp,
     ErrorScrollDown,
     ToggleUiMode,
+    SidebarNarrow,
+    SidebarWiden,
+    SidebarResizeEnd,
     SearchChar(char),
     SearchBackspace,
 

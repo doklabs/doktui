@@ -6,12 +6,15 @@ use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shor
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Containers ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("containers-panel-title"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let subtitle = i18n.t("containers-title");
     frame.render_widget(
-        Paragraph::new(header_line(theme, "docker ps")),
+        Paragraph::new(header_line(theme, &subtitle)),
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y,
@@ -22,9 +25,9 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     let items: Vec<ListItem> = if state.containers.is_empty() {
         vec![ListItem::new(if state.loading {
-            "loading…"
+            i18n.t("containers-loading")
         } else {
-            "no containers — connect to a server under Projects first"
+            i18n.t("containers-empty")
         })]
     } else {
         state
@@ -62,12 +65,12 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("j/k", "select"),
-                ("S", "start"),
-                ("s", "stop"),
-                ("R", "restart"),
-                ("r", "remove"),
-                ("b", "back"),
+                ("j/k", &i18n.t("containers-shortcut-select")),
+                ("S", &i18n.t("containers-shortcut-start")),
+                ("s", &i18n.t("containers-shortcut-stop")),
+                ("R", &i18n.t("containers-shortcut-restart")),
+                ("r", &i18n.t("containers-shortcut-remove")),
+                ("b", &i18n.t("containers-shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

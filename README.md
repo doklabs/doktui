@@ -135,7 +135,17 @@ Config and data live in per-OS locations:
 | Windows config | `%APPDATA%\doktui\config.toml` |
 | Data (keys, known_hosts, secrets) | OS data dir, e.g. `~/.local/share/doktui/` |
 
-Common settings: `theme`, `editor_mode` (`vim`/`normal`), `auto_reconnect`, `check_updates`, `mouse`, `acme_email`.
+Common settings: `theme`, `locale`, `sidebar_width`, `editor_mode` (`vim`/`normal`), `auto_reconnect`, `check_updates`, `mouse`, `acme_email`.
+
+### Locales
+
+UI strings are loaded from Fluent (`.ftl`) locale files. English is bundled; add translations under `~/.config/doktui/locales/`:
+
+```sh
+cp locales/en.ftl ~/.config/doktui/locales/id.ftl
+# edit translations, then set in config.toml:
+# locale = "id"
+```
 
 ### Themes
 

@@ -6,12 +6,15 @@ use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shor
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Secrets / Env ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("secrets-panel-title"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let subtitle = i18n.t("secrets-title");
     frame.render_widget(
-        Paragraph::new(header_line(theme, "encrypted local store")),
+        Paragraph::new(header_line(theme, &subtitle)),
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y,
@@ -21,7 +24,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     );
 
     let items: Vec<ListItem> = if state.secret_keys.is_empty() {
-        vec![ListItem::new("no secrets yet — add one below")]
+        vec![ListItem::new(i18n.t("secrets-empty"))]
     } else {
         state
             .secret_keys
@@ -54,7 +57,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     let form_y = inner.y + inner.height.saturating_sub(6);
     frame.render_widget(
-        Paragraph::new(format!("Key:   {}", form.key)).style(key_style),
+        Paragraph::new(format!("{}   {}", i18n.t("secrets-key"), form.key)).style(key_style),
         ratatui::layout::Rect {
             x: inner.x,
             y: form_y,
@@ -64,7 +67,8 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     );
     frame.render_widget(
         Paragraph::new(format!(
-            "Value: {}",
+            "{} {}",
+            i18n.t("secrets-value"),
             if form.value.is_empty() {
                 "_"
             } else {
@@ -84,10 +88,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("Tab", "field"),
-                ("Enter", "save"),
-                ("d", "delete last"),
-                ("b", "back"),
+                ("Tab", &i18n.t("secrets-shortcut-tab")),
+                ("Enter", &i18n.t("secrets-shortcut-save")),
+                ("d", &i18n.t("secrets-shortcut-delete")),
+                ("b", &i18n.t("secrets-shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

@@ -11,7 +11,9 @@ use crate::ui::theme::{Role, muted_style, panel_block, success_style, text_style
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" HOME ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("home-title"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -22,7 +24,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         .iter()
         .filter(|c| c.status.to_lowercase().contains("up"))
         .count();
-    let deploy_note = if state.loading { "1 deploy running" } else { "0 deploy running" };
+    let deploy_note = if state.loading {
+        i18n.t("home-deploy-running-1")
+    } else {
+        i18n.t("home-deploy-running-0")
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -34,18 +40,21 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         ])
         .split(inner);
 
+    let summary = i18n.t_fmt(
+        "home-summary",
+        &[
+            ("servers", &server_count.to_string()),
+            ("apps", &app_count.to_string()),
+            ("deploy", &deploy_note),
+        ],
+    );
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
-                "HOME",
+                i18n.t("home-title"),
                 theme.style_bold(Role::Primary).add_modifier(Modifier::BOLD),
             )),
-            Line::from(Span::styled(
-                format!(
-                    "{server_count} servers · {app_count} apps · {deploy_note}"
-                ),
-                muted_style(theme),
-            )),
+            Line::from(Span::styled(summary, muted_style(theme))),
         ]),
         chunks[0],
     );
@@ -65,6 +74,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
 fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usize, total: usize) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -79,7 +89,7 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         frame,
         cols[0],
         theme,
-        "Apps Online",
+        &i18n.t("home-stat-apps"),
         Line::from(apps_label),
         Role::Success,
     );
@@ -96,7 +106,7 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         frame,
         cols[1],
         theme,
-        "CPU",
+        &i18n.t("home-stat-cpu"),
         Line::from(cpu_spans),
         Role::Warning,
     );
@@ -105,7 +115,7 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         frame,
         cols[2],
         theme,
-        "Uptime",
+        &i18n.t("home-stat-uptime"),
         Line::from("99.9%"),
         Role::Accent,
     );
@@ -130,15 +140,22 @@ fn stat_card(
 
 fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let domain = if state.deploy_form.domain.trim().is_empty() {
-        "app.example.com".to_string()
+        i18n.t("home-deploy-placeholder")
     } else {
         state.deploy_form.domain.clone()
     };
     let spin = anim::spinner(theme, state.anim_tick);
     let bar = anim::progress_bar(theme, state.anim_tick, 28, 72);
 
-    let title = format!("{} DEPLOYING · {domain}", theme.glyphs.arrow);
+    let title = i18n.t_fmt(
+        "home-deploying-title",
+        &[
+            ("arrow", &theme.glyphs.arrow),
+            ("domain", &domain),
+        ],
+    );
     let block = panel_block(&title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -146,22 +163,31 @@ fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
     let lines = vec![
         Line::from(vec![
             Span::styled(bar, theme.style(Role::Primary)),
-            Span::styled(format!("  building {spin}"), muted_style(theme)),
+            Span::styled(
+                format!("  {}", i18n.t_fmt("home-deploy-building", &[("spin", &spin.to_string())])),
+                muted_style(theme),
+            ),
         ]),
         Line::from(Span::styled(
-            format!("{} doktui-network attached", theme.glyphs.check),
+            i18n.t_fmt(
+                "home-deploy-network-attached",
+                &[("check", &theme.glyphs.check)],
+            ),
             success_style(theme),
         )),
         Line::from(Span::styled(
-            format!(
-                "{} traefik route → Host(`{domain}`) tls:le",
-                theme.glyphs.check
+            i18n.t_fmt(
+                "home-deploy-traefik-route",
+                &[("check", &theme.glyphs.check), ("domain", &domain)],
             ),
             success_style(theme),
         )),
         Line::from(vec![
             Span::styled(
-                format!("{} pulling image… ", theme.glyphs.arrow),
+                i18n.t_fmt(
+                    "home-deploy-pulling",
+                    &[("arrow", &theme.glyphs.arrow)],
+                ),
                 warning_style(theme),
             ),
             Span::styled(spin.to_string(), theme.style(Role::Accent)),
@@ -173,18 +199,24 @@ fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_overview(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let body = if let Some(srv) = state.selected_server_config() {
         let dot = theme.glyphs.dot_on.clone();
-        format!(
-            "Active server: {} @ {}:{}\nStatus: {dot} connected\n\nUse Projects to manage SSH servers.\nUse Deployments to deploy apps.",
-            srv.name, srv.host, srv.port
+        i18n.t_fmt(
+            "home-active-server",
+            &[
+                ("name", &srv.name),
+                ("host", &srv.host),
+                ("port", &srv.port.to_string()),
+                ("dot", &dot),
+            ],
         )
     } else if state.servers.is_empty() {
-        "No servers yet.\n\nGo to Projects → press [a] to register an SSH server.".into()
+        i18n.t("home-no-servers")
     } else {
-        format!(
-            "{} server(s) registered.\nSelect one under Projects.",
-            state.servers.len()
+        i18n.t_fmt(
+            "home-servers-registered",
+            &[("count", &state.servers.len().to_string())],
         )
     };
 
@@ -198,6 +230,7 @@ fn render_overview(frame: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_achievement(frame: &mut Frame, area: Rect, state: &AppState, text: &str) {
     let theme = &state.theme;
+    let i18n = &state.i18n;
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(theme.style(Role::Warning))
@@ -208,12 +241,19 @@ fn render_achievement(frame: &mut Frame, area: Rect, state: &AppState, text: &st
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(vec![
-                Span::styled(format!("{} ACHIEVEMENT", theme.glyphs.star), theme.style_bold(Role::Warning)),
+                Span::styled(
+                    format!(
+                        "{} {}",
+                        theme.glyphs.star,
+                        i18n.t("home-achievement-label")
+                    ),
+                    theme.style_bold(Role::Warning),
+                ),
                 Span::raw(" — "),
                 Span::styled(text.to_string(), text_style(theme)),
             ]),
             Line::from(Span::styled(
-                "cert Let's Encrypt terbit · +50 XP",
+                i18n.t("home-achievement-https"),
                 muted_style(theme),
             )),
         ]),

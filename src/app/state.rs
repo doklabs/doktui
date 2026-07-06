@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::app::event::Message;
 use crate::config::{CronJob, EditorMode, ServerConfig, UiMode as ConfigUiMode};
+use crate::i18n::I18n;
 use crate::services::docker::{ContainerInfo, ContainerStats};
 use crate::services::provision::{ProvisionProgress, ProvisionResult};
 use crate::services::ssh::{ConnectionState, SshStatus};
@@ -211,6 +212,16 @@ impl Default for CronForm {
     }
 }
 
+/// Minimum sidebar width in terminal columns.
+pub const MIN_SIDEBAR_WIDTH: u16 = 12;
+/// Minimum main content width in terminal columns.
+pub const MIN_CONTENT_WIDTH: u16 = 10;
+
+pub fn clamp_sidebar_width(requested: u16, terminal_width: u16) -> u16 {
+    let max = terminal_width.saturating_sub(MIN_CONTENT_WIDTH);
+    requested.clamp(MIN_SIDEBAR_WIDTH, max.max(MIN_SIDEBAR_WIDTH))
+}
+
 #[derive(Clone, Debug)]
 pub struct ClickRegion {
     pub rect: ratatui::layout::Rect,
@@ -271,6 +282,12 @@ pub struct AppState {
     pub error_panel_open: bool,
     pub error_scroll: u16,
     pub theme: crate::ui::theme::Theme,
+    pub i18n: I18n,
+    pub sidebar_width: u16,
+    pub shell_body: RefCell<ratatui::layout::Rect>,
+    pub sidebar_area: RefCell<ratatui::layout::Rect>,
+    pub gutter_rect: RefCell<ratatui::layout::Rect>,
+    pub sidebar_resizing: bool,
     /// Animation frame counter (~15 fps); separate from housekeeping tick.
     pub anim_tick: u64,
     pub click_regions: RefCell<Vec<ClickRegion>>,
@@ -287,6 +304,8 @@ impl AppState {
         config_ui_mode: ConfigUiMode,
         cron_jobs: Vec<CronJob>,
         theme: crate::ui::theme::Theme,
+        i18n: I18n,
+        sidebar_width: u16,
     ) -> Self {
         let screen = if onboarding_complete && !servers.is_empty() {
             Screen::Home
@@ -312,6 +331,12 @@ impl AppState {
             error_panel_open: false,
             error_scroll: 0,
             theme,
+            i18n,
+            sidebar_width,
+            shell_body: RefCell::new(ratatui::layout::Rect::default()),
+            sidebar_area: RefCell::new(ratatui::layout::Rect::default()),
+            gutter_rect: RefCell::new(ratatui::layout::Rect::default()),
+            sidebar_resizing: false,
             anim_tick: 0,
             click_regions: RefCell::new(Vec::new()),
             mouse_pos: None,
@@ -394,5 +419,24 @@ impl AppState {
 
     pub fn is_hovered(&self, rect: ratatui::layout::Rect) -> bool {
         matches!(self.mouse_pos, Some((c, r)) if hit(rect, c, r))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_sidebar_respects_terminal_width() {
+        assert_eq!(clamp_sidebar_width(30, 40), 30);
+        assert_eq!(clamp_sidebar_width(30, 35), 25);
+        assert_eq!(clamp_sidebar_width(8, 40), MIN_SIDEBAR_WIDTH);
+    }
+
+    #[test]
+    fn config_sidebar_width_defaults() {
+        let cfg: crate::config::AppConfig = toml::from_str("").unwrap();
+        assert_eq!(cfg.sidebar_width, 22);
+        assert_eq!(cfg.locale, "en");
     }
 }

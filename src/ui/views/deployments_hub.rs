@@ -6,12 +6,15 @@ use crate::ui::theme::{header_line, panel_block, shortcut_line};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
-    let block = panel_block(" Deployments ", theme);
+    let i18n = &state.i18n;
+    let panel_title = format!(" {} ", i18n.t("nav-deployments"));
+    let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let subtitle = i18n.t("deploy-hub-title");
     frame.render_widget(
-        Paragraph::new(header_line(theme, "deploy & runtime")),
+        Paragraph::new(header_line(theme, &subtitle)),
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y,
@@ -21,11 +24,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     );
 
     let items = vec![
-        ListItem::new("[d] Deploy — docker compose to server"),
-        ListItem::new("[c] Containers — start/stop/restart"),
-        ListItem::new("[l] Logs — stream container output"),
-        ListItem::new("[v] Secrets — env vars (encrypted locally)"),
-        ListItem::new("[e] Editor — edit compose file"),
+        ListItem::new(i18n.t("deploy-hub-item-deploy")),
+        ListItem::new(i18n.t("deploy-hub-item-containers")),
+        ListItem::new(i18n.t("deploy-hub-item-logs")),
+        ListItem::new(i18n.t("deploy-hub-item-secrets")),
+        ListItem::new(i18n.t("deploy-hub-item-editor")),
     ];
 
     frame.render_widget(
@@ -40,8 +43,8 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     let server = state
         .selected_server_config()
-        .map(|s| format!("Target: {}", s.name))
-        .unwrap_or_else(|| "Target: (none — pick server in Projects)".into());
+        .map(|s| i18n.t_fmt("deploy-hub-target", &[("name", &s.name)]))
+        .unwrap_or_else(|| i18n.t("deploy-hub-no-target"));
 
     frame.render_widget(
         Paragraph::new(server),
@@ -57,11 +60,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("d", "deploy"),
-                ("c", "containers"),
-                ("l", "logs"),
-                ("v", "secrets"),
-                ("e", "editor"),
+                ("d", &i18n.t("deploy-hub-shortcut-deploy")),
+                ("c", &i18n.t("deploy-hub-shortcut-containers")),
+                ("l", &i18n.t("deploy-hub-shortcut-logs")),
+                ("v", &i18n.t("deploy-hub-shortcut-secrets")),
+                ("e", &i18n.t("deploy-hub-shortcut-editor")),
             ],
         )),
         ratatui::layout::Rect {

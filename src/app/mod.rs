@@ -16,6 +16,7 @@ use ratatui::Terminal;
 use tokio::sync::{Mutex, mpsc};
 
 use crate::config::{AcmeChallenge, AppConfig, CronAction, CronJob, ServerConfig, bootstrap};
+use crate::i18n::I18n;
 use crate::security::{hostkey, keys};
 use crate::services::secrets::SecretsManager;
 use crate::services::routing::{self, DomainSpec};
@@ -23,7 +24,7 @@ use crate::ui::{self, layout};
 
 use self::command::{CommandBus, save_new_server};
 use self::event::Message;
-use self::state::{AppState, CronActionKind, CronForm, DeployForm, HostKeyAfterAction, NavSection, Screen, ServerForm, UiMode, hit};
+use self::state::{AppState, CronActionKind, CronForm, DeployForm, HostKeyAfterAction, NavSection, Screen, ServerForm, UiMode, clamp_sidebar_width, hit};
 
 pub mod command;
 pub mod event;
@@ -51,19 +52,15 @@ pub async fn run_tui() -> Result<()> {
 
     let auto_reconnect = config.lock().await.auto_reconnect;
     let check_updates = config.lock().await.check_updates;
-    let bus = CommandBus::new(
-        tx.clone(),
-        config.clone(),
-        secrets,
-        auto_reconnect,
-        ssh_tx,
-    );
-    bus.spawn_update_check(VERSION, check_updates);
 
-    let mut state = {
+    let (i18n, mut state) = {
         let cfg = config.lock().await;
         let theme = ui::theme::ThemeRegistry::active(&cfg.theme);
-        AppState::new(
+        let i18n = I18n::load(&cfg.locale)?;
+        let locale_fallback = i18n.used_fallback();
+        let locale_tag = cfg.locale.clone();
+        let sidebar_width = cfg.sidebar_width;
+        let mut s = AppState::new(
             cfg.servers.clone(),
             cfg.onboarding_complete,
             public_key.trim().to_string(),
@@ -71,8 +68,26 @@ pub async fn run_tui() -> Result<()> {
             cfg.ui_mode.clone(),
             cfg.cron_jobs.clone(),
             theme,
-        )
+            i18n.clone(),
+            sidebar_width,
+        );
+        if locale_fallback {
+            s.status_message = Some(format!(
+                "locale `{locale_tag}` unavailable — using English"
+            ));
+        }
+        (i18n, s)
     };
+
+    let bus = CommandBus::new(
+        tx.clone(),
+        config.clone(),
+        secrets,
+        i18n,
+        auto_reconnect,
+        ssh_tx,
+    );
+    bus.spawn_update_check(VERSION, check_updates);
 
     enable_raw_mode()?;
     let mouse_enabled = config.lock().await.mouse;
@@ -239,6 +254,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                 KeyCode::Up | KeyCode::Char('k') => Some(Message::SidebarPrev),
                 code if is_enter(code) => Some(Message::GoNav(state.nav_section)),
                 KeyCode::Right | KeyCode::Char('l') => Some(Message::ToggleSidebarFocus),
+                KeyCode::Char('[') => Some(Message::SidebarNarrow),
+                KeyCode::Char(']') => Some(Message::SidebarWiden),
                 KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
                 KeyCode::Char(c) => layout::section_from_char(c).map(Message::GoNav),
                 _ => None,
@@ -398,7 +415,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                         routing,
                     })
                 } else {
-                    Some(Message::SetError("add a server first".into()))
+                    Some(Message::SetError(state.i18n.t("error-add-server-first")))
                 }
             }
             KeyCode::Char(c) if state.deploy_form.active_field != 4 => Some(Message::FormChar(c)),
@@ -427,18 +444,47 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
     }
 }
 
+fn apply_sidebar_drag(state: &mut AppState, column: u16) {
+    let body = *state.shell_body.borrow();
+    let requested = column.saturating_sub(body.x);
+    state.sidebar_width = clamp_sidebar_width(requested, body.width);
+}
+
 fn handle_mouse(state: &mut AppState, me: MouseEvent) -> Option<Message> {
     match me.kind {
         MouseEventKind::Moved => {
             state.mouse_pos = Some((me.column, me.row));
+            if state.sidebar_resizing {
+                apply_sidebar_drag(state, me.column);
+            }
             None
         }
-        MouseEventKind::Down(MouseButton::Left) => state
-            .click_regions
-            .borrow()
-            .iter()
-            .find(|c| hit(c.rect, me.column, me.row))
-            .map(|c| c.msg.clone()),
+        MouseEventKind::Down(MouseButton::Left) => {
+            if layout::gutter_hit(state, me.column, me.row) {
+                state.sidebar_resizing = true;
+                apply_sidebar_drag(state, me.column);
+                return None;
+            }
+            state
+                .click_regions
+                .borrow()
+                .iter()
+                .find(|c| hit(c.rect, me.column, me.row))
+                .map(|c| c.msg.clone())
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if state.sidebar_resizing {
+                apply_sidebar_drag(state, me.column);
+            }
+            None
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            if state.sidebar_resizing {
+                state.sidebar_resizing = false;
+                return Some(Message::SidebarResizeEnd);
+            }
+            None
+        }
         MouseEventKind::ScrollDown => scroll_message(state, true),
         MouseEventKind::ScrollUp => scroll_message(state, false),
         _ => None,
@@ -519,8 +565,11 @@ async fn update(
         Message::CopyPublicKey => {
             match arboard::Clipboard::new().and_then(|mut clip| clip.set_text(state.public_key.clone()))
             {
-                Ok(()) => state.status_message = Some("SSH public key copied".into()),
-                Err(e) => push_error(state, format!("clipboard copy failed: {e}")),
+                Ok(()) => state.status_message = Some(state.i18n.t("status-copied-key")),
+                Err(e) => push_error(
+                    state,
+                    state.i18n.t_fmt("error-clipboard", &[("err", &e.to_string())]),
+                ),
             }
         }
         Message::GoNav(section) => {
@@ -543,7 +592,7 @@ async fn update(
                     bus.load_schedules(id);
                 } else {
                     state.loading = false;
-                    push_error(state, "select a server under Projects first".into());
+                    push_error(state, state.i18n.t("error-select-server"));
                 }
             }
         }
@@ -582,6 +631,23 @@ async fn update(
             };
             let _ = cfg.save();
         }
+        Message::SidebarNarrow => {
+            let body = *state.shell_body.borrow();
+            state.sidebar_width = clamp_sidebar_width(
+                state.sidebar_width.saturating_sub(1),
+                body.width,
+            );
+            persist_sidebar_width(state, config).await;
+        }
+        Message::SidebarWiden => {
+            let body = *state.shell_body.borrow();
+            state.sidebar_width =
+                clamp_sidebar_width(state.sidebar_width.saturating_add(1), body.width);
+            persist_sidebar_width(state, config).await;
+        }
+        Message::SidebarResizeEnd => {
+            persist_sidebar_width(state, config).await;
+        }
         Message::GoServerList => {
             state.go_nav(NavSection::Projects);
             if state.selected_server.is_none() {
@@ -605,7 +671,7 @@ async fn update(
                 bus.load_containers(id);
             } else {
                 state.loading = false;
-                push_error(state, "select a server under Projects first".into());
+                push_error(state, state.i18n.t("error-select-server"));
             }
         }
         Message::GoLogs => {
@@ -617,7 +683,7 @@ async fn update(
                 bus.load_logs(id, container);
             } else {
                 state.loading = false;
-                push_error(state, "select a server under Projects first".into());
+                push_error(state, state.i18n.t("error-select-server"));
             }
         }
         Message::GoSecrets => {
@@ -664,12 +730,12 @@ async fn update(
             }
         }
         Message::EditorSaved => {
-            state.status_message = Some("editor saved".into());
+            state.status_message = Some(state.i18n.t("status-editor-saved"));
         }
         Message::SubmitServerForm => {
             let form = &state.server_form;
             if form.name.is_empty() || form.host.is_empty() {
-                push_error(state, "name and host are required".into());
+                push_error(state, state.i18n.t("error-name-host-required"));
             } else {
                 let port: u16 = form.port.parse().unwrap_or(22);
                 let server = ServerConfig::new(
@@ -695,7 +761,7 @@ async fn update(
                         bus.dispatch(Message::ProvisionServer(id));
                     }
                 } else {
-                    push_error(state, "failed to save server".into());
+                    push_error(state, state.i18n.t("error-save-server"));
                 }
             }
         }
@@ -716,7 +782,7 @@ async fn update(
                 Ok(res) => {
                     state.provision_result = Some(res);
                     state.go_nav(NavSection::Home);
-                    state.status_message = Some("server provisioned successfully".into());
+                    state.status_message = Some(state.i18n.t("status-provisioned"));
                 }
                 Err(e) => {
                     push_error(state, e);
@@ -792,7 +858,7 @@ async fn update(
                 return;
             };
             if form.label.trim().is_empty() {
-                push_error(state, "schedule label is required".into());
+                push_error(state, state.i18n.t("error-schedule-label"));
                 state.cron_form = Some(form);
                 return;
             }
@@ -805,7 +871,7 @@ async fn update(
                 .selected_server
                 .or_else(|| state.servers.first().map(|s| s.id))
             else {
-                push_error(state, "select a server under Projects first".into());
+                push_error(state, state.i18n.t("error-select-server"));
                 state.cron_form = Some(form);
                 return;
             };
@@ -830,7 +896,7 @@ async fn update(
             cfg.cron_jobs.push(job);
             let _ = cfg.save();
             state.cron_jobs = cfg.cron_jobs.clone();
-            state.status_message = Some("cron job saved".into());
+            state.status_message = Some(state.i18n.t("status-cron-saved"));
         }
         Message::DeleteCronJob(id) => {
             let mut cfg = config.lock().await;
@@ -840,7 +906,7 @@ async fn update(
             state.selected_cron = state
                 .selected_cron
                 .min(state.cron_jobs.len().saturating_sub(1));
-            state.status_message = Some("cron job deleted".into());
+            state.status_message = Some(state.i18n.t("status-cron-deleted"));
         }
         Message::ToggleCronJob(id) => {
             let mut cfg = config.lock().await;
@@ -852,7 +918,10 @@ async fn update(
         }
         Message::CronJobDone { id: _, result } => {
             match result {
-                Ok(msg) => state.status_message = Some(format!("schedule: {msg}")),
+                Ok(msg) => state.status_message = Some(state.i18n.t_fmt(
+                    "cmd-schedule-result",
+                    &[("msg", &msg)],
+                )),
                 Err(e) => push_error(state, e),
             }
         }
@@ -863,7 +932,7 @@ async fn update(
         Message::SubmitSecretForm => {
             let form = &state.secret_form;
             if form.key.is_empty() {
-                push_error(state, "secret key is required".into());
+                push_error(state, state.i18n.t("error-secret-key"));
             } else {
                 bus.save_secret(form.key.clone(), form.value.clone());
                 state.secret_form = Default::default();
@@ -897,10 +966,7 @@ async fn update(
                 if spec.is_wildcard() {
                     let challenge = config.lock().await.acme_challenge;
                     if challenge != AcmeChallenge::DnsCloudflare {
-                        push_error(
-                            state,
-                            "wildcard domains require DNS-01: set acme_challenge = \"dns_cloudflare\" in config and add CF_DNS_API_TOKEN in Secrets".into(),
-                        );
+                        push_error(state, state.i18n.t("error-wildcard-dns"));
                         return;
                     }
                 }
@@ -920,10 +986,10 @@ async fn update(
                         state.error_message = None;
                         state.error_detail = None;
                         if state.deploy_form.https && !state.deploy_form.domain.trim().is_empty() {
-                            state.achievement = Some("First HTTPS Deploy".into());
+                            state.achievement = Some(state.i18n.t("achievement-first-https"));
                         }
                     } else {
-                        state.status_message = Some("deploy completed with warnings".into());
+                        state.status_message = Some(state.i18n.t("status-deploy-warnings"));
                         push_error(state, report.summary());
                     }
                     state.go_nav(NavSection::Deployments);
@@ -1016,7 +1082,7 @@ async fn update(
         Message::RejectHostKey => {
             state.host_key_prompt = None;
             state.screen = Screen::ServerList;
-            push_error(state, "host key rejected — connection aborted".into());
+            push_error(state, state.i18n.t("error-hostkey-rejected"));
         }
         Message::HostKeyRequired {
             server_id,
@@ -1037,7 +1103,7 @@ async fn update(
         }
         Message::ConnectServer(id) => {
             state.selected_server = Some(id);
-            state.status_message = Some("connecting…".into());
+            state.status_message = Some(state.i18n.t("status-connecting"));
         }
         Message::StartContainer { .. }
         | Message::StopContainer { .. }
@@ -1045,8 +1111,20 @@ async fn update(
         | Message::RemoveContainer { .. } => {
             state.loading = true;
         }
-        Message::Key(_) | Message::Resize(_, _) => {}
+        Message::Key(_) => {}
+        Message::Resize(w, _) => {
+            state.sidebar_width = clamp_sidebar_width(state.sidebar_width, w);
+            let mut cfg = config.lock().await;
+            cfg.sidebar_width = state.sidebar_width;
+            let _ = cfg.save();
+        }
     }
+}
+
+async fn persist_sidebar_width(state: &AppState, config: &Arc<Mutex<AppConfig>>) {
+    let mut cfg = config.lock().await;
+    cfg.sidebar_width = state.sidebar_width;
+    let _ = cfg.save();
 }
 
 fn edit_backspace(state: &mut AppState) {
