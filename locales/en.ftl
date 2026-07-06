@@ -64,6 +64,7 @@ hostkey-trust =
 
     Trust this host? [y/n]
 welcome-ssh-box-title = ◆ dedicated ssh key
+welcome-ssh-fingerprint = fp:
 welcome-ssh-copy = [c] copy
 form-add-server-title = Register SSH Server
 form-add-server-hint = Tab/Shift+Tab • Enter save • Esc back
@@ -168,6 +169,7 @@ containers-shortcut-back = back
 
 # Logs
 logs-title = container logs
+logs-target = container: { $name }
 logs-fetching = fetching logs…
 logs-empty = no logs yet
 logs-shortcut-back = back
@@ -287,14 +289,17 @@ cmd-server-not-found = server not found
 cmd-connect-before-deploy = connect to server before deploying
 cmd-traefik-not-running = Traefik is not running — provision the server first
 cmd-cron-not-found = cron job not found
-cmd-schedule-result = schedule: { $msg }
+cmd-schedule-result = { $label }: { $msg }
 cmd-container-action-ok = { $action } { $name } OK
 
 # Provision progress
 provision-detect-os = Detecting server OS…
 provision-check-docker = Checking Docker…
 provision-install-docker = Installing Docker (this may take a few minutes)…
-provision-install-traefik = Installing Traefik…
+provision-check-traefik = Checking Traefik…
+provision-migrate-traefik = Migrating Traefik to doktui-network (auto-upgrade)…
+provision-install-traefik = Deploying Traefik…
+provision-verify = Verifying setup…
 provision-ready = Server ready
 
 # Routing validation

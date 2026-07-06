@@ -11,11 +11,9 @@ use crate::services::updater::UpdateNotice;
 pub enum Message {
     Tick,
     Quit,
-    Key(crossterm::event::KeyEvent),
-    Resize(u16, u16),
+    Resize(u16),
 
     // Navigation
-    GoWelcome,
     GoHome,
     CopyPublicKey,
     GoNav(NavSection),
@@ -123,5 +121,4 @@ pub enum Message {
     FormPrevField,
     ToggleDeployHttps,
     EditorKey(crossterm::event::KeyEvent),
-    EditorSaved,
 }

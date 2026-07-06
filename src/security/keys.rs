@@ -6,6 +6,7 @@ use russh_keys::key::KeyPair;
 use russh_keys::{PublicKeyBase64, decode_secret_key, encode_pkcs8_pem, load_public_key};
 
 use crate::config::paths;
+use crate::security::keychain;
 
 const KEY_COMMENT: &str = "doktui@doklabs";
 
@@ -16,13 +17,21 @@ pub fn ensure_keypair() -> Result<()> {
 
     if priv_path.exists() && pub_path.exists() {
         enforce_key_permissions(&priv_path)?;
+        if keychain::load_key_pem()?.is_none() {
+            if let Ok(pem) = fs::read_to_string(&priv_path) {
+                let _ = keychain::store_key_pem(&pem);
+            }
+        }
         return Ok(());
     }
 
     let key = KeyPair::generate_ed25519();
+    let _ = keychain::delete_key_pem();
     let mut priv_pem = Vec::new();
     encode_pkcs8_pem(&key, &mut priv_pem).context("failed to encode private key")?;
-    fs::write(&priv_path, priv_pem)?;
+    let pem_str = String::from_utf8(priv_pem.clone()).context("invalid private key encoding")?;
+    fs::write(&priv_path, &priv_pem)?;
+    let _ = keychain::store_key_pem(&pem_str);
 
     let public = key.clone_public_key()?;
     let pub_line = format!(
@@ -37,6 +46,11 @@ pub fn ensure_keypair() -> Result<()> {
 }
 
 pub fn load_private_key() -> Result<KeyPair> {
+    if let Some(pem) = keychain::load_key_pem()? {
+        if let Ok(key) = decode_secret_key(&pem, None) {
+            return Ok(key);
+        }
+    }
     let path = paths::ssh_key_path()?;
     enforce_key_permissions(&path)?;
     let pem = fs::read_to_string(&path)

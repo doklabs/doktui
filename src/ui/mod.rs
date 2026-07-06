@@ -12,7 +12,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
 
-use crate::app::state::AppState;
+use crate::app::state::{AppState, UiMode};
 use crate::ui::theme::{Role, error_style, muted_style, success_style};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -48,6 +48,9 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         layout::render_sidebar(frame, sidebar, state);
         layout::render_gutter(frame, state);
         render_content(frame, content, state);
+        if state.ui_mode == UiMode::Overlay {
+            layout::render_mode_hint(frame, content, state);
+        }
 
         shell::render_footer(frame, outer[2], state);
 

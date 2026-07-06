@@ -2,6 +2,7 @@ use ratatui::Frame;
 use ratatui::widgets::{Block, Gauge, Paragraph, Wrap};
 
 use crate::app::state::AppState;
+use crate::services::provision::ProvisionStep;
 use crate::ui::theme::{header_line, muted_style, panel_block, success_style};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
@@ -15,8 +16,13 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     let progress = state.provision_progress.as_ref();
     let starting = i18n.t("provision-starting");
     let (msg, pct) = progress
-        .map(|p| (p.message.as_str(), p.percent))
-        .unwrap_or((&starting, 0));
+        .map(|p| {
+            (
+                provision_step_label(i18n, &p.step, &p.message),
+                p.percent,
+            )
+        })
+        .unwrap_or((starting, 0));
 
     let subtitle = i18n.t("provision-title");
     frame.render_widget(
@@ -51,5 +57,28 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 height: inner.height.saturating_sub(6),
             },
         );
+    }
+}
+
+fn provision_step_label(
+    i18n: &crate::i18n::I18n,
+    step: &ProvisionStep,
+    fallback: &str,
+) -> String {
+    let key = match step {
+        ProvisionStep::DetectOs => "provision-detect-os",
+        ProvisionStep::CheckDocker => "provision-check-docker",
+        ProvisionStep::InstallDocker => "provision-install-docker",
+        ProvisionStep::CheckTraefik => "provision-check-traefik",
+        ProvisionStep::MigrateTraefik => "provision-migrate-traefik",
+        ProvisionStep::InstallTraefik => "provision-install-traefik",
+        ProvisionStep::Verify => "provision-verify",
+        ProvisionStep::Done => "provision-ready",
+    };
+    let translated = i18n.t(key);
+    if translated == key {
+        fallback.to_string()
+    } else {
+        translated
     }
 }

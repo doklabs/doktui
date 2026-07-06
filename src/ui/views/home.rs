@@ -84,13 +84,30 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         ])
         .split(area);
 
+    let apps_pct = if total > 0 {
+        (running * 100 / total) as u8
+    } else {
+        0
+    };
+    let apps_bar = anim::gradient_bar(theme, 12, apps_pct);
+    let pulse = anim::pulse(theme, state.metrics_tick as u64);
     let apps_label = format!("{running:02}/{total:02}");
     stat_card(
         frame,
         cols[0],
         theme,
         &i18n.t("home-stat-apps"),
-        Line::from(apps_label),
+        Line::from(vec![
+            Span::styled(apps_bar, theme.style(Role::Success)),
+            Span::styled(
+                format!(" {apps_label}"),
+                theme.style(Role::Success).add_modifier(if pulse > 0.5 {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
+            ),
+        ]),
         Role::Success,
     );
 
@@ -116,7 +133,16 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         cols[2],
         theme,
         &i18n.t("home-stat-uptime"),
-        Line::from("99.9%"),
+        Line::from(vec![
+            Span::styled(
+                anim::gradient_bar(theme, 12, 99),
+                theme.style(Role::Accent),
+            ),
+            Span::styled(
+                format!(" {:.1}%", 99.9 * f64::from(pulse)),
+                theme.style(Role::Accent),
+            ),
+        ]),
         Role::Accent,
     );
 }

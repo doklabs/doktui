@@ -53,23 +53,6 @@ impl Role {
             _ => None,
         }
     }
-
-    pub fn key(self) -> &'static str {
-        match self {
-            Role::Bg => "bg",
-            Role::Surface => "surface",
-            Role::Border => "border",
-            Role::Text => "text",
-            Role::TextMuted => "text_muted",
-            Role::Primary => "primary",
-            Role::Accent => "accent",
-            Role::Success => "success",
-            Role::Warning => "warning",
-            Role::Danger => "danger",
-            Role::Selection => "selection",
-            Role::Cursor => "cursor",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

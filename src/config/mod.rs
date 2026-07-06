@@ -216,6 +216,11 @@ impl AppConfig {
 pub fn bootstrap() -> Result<AppConfig> {
     paths::ensure_dirs()?;
     keys::ensure_keypair()?;
+    if let Ok(marker_path) = paths::install_marker_path() {
+        if !Path::new(&marker_path).exists() {
+            write_install_marker(InstallMethod::Script)?;
+        }
+    }
     AppConfig::load()
 }
 

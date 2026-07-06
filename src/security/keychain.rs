@@ -26,3 +26,15 @@ pub fn delete_key_pem() -> Result<()> {
         Err(e) => Err(e.into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_key_pem_without_entry_returns_none() {
+        let _ = delete_key_pem();
+        let loaded = load_key_pem().expect("keychain should be reachable");
+        assert!(loaded.is_none());
+    }
+}

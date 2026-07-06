@@ -4,22 +4,11 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Clear, Paragraph, Wrap};
 
-use crate::app::state::{AppState, NavSection, Screen, UiMode, clamp_sidebar_width, hit};
+use crate::app::state::{AppState, NavSection, UiMode, clamp_sidebar_width, hit};
 
 use super::theme::{border_style, error_style, muted_style, panel_block, Role};
 
 pub use sidebar::render_sidebar;
-
-pub fn uses_app_shell(screen: Screen) -> bool {
-    !matches!(
-        screen,
-        Screen::Welcome
-            | Screen::AddServer
-            | Screen::HostKeyPrompt
-            | Screen::Provisioning
-            | Screen::ConfirmDestructive
-    )
-}
 
 pub fn split_shell(_frame: &mut Frame, area: Rect, state: &AppState) -> (Rect, Rect) {
     *state.shell_body.borrow_mut() = area;

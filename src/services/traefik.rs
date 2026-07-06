@@ -120,11 +120,6 @@ pub async fn ensure_network(session: &mut SshSession) -> Result<()> {
 pub struct TraefikProvisioner;
 
 impl TraefikProvisioner {
-    /// Back-compat: true when any Traefik container is running.
-    pub async fn is_running(session: &mut SshSession) -> Result<bool> {
-        Ok(!matches!(Self::status(session).await?, TraefikStatus::NotRunning))
-    }
-
     pub async fn status(session: &mut SshSession) -> Result<TraefikStatus> {
         let out = session
             .exec(&format!(

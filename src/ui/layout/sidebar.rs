@@ -215,6 +215,7 @@ mod tests {
             vec![],
             false,
             String::new(),
+            String::new(),
             crate::config::EditorMode::Normal,
             crate::config::UiMode::Overlay,
             vec![],

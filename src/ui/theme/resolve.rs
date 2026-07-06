@@ -87,13 +87,17 @@ fn resolve_color(value: &str, palette: &HashMap<String, String>) -> Result<Color
 
 pub fn raw_to_theme(raw: RawTheme, fallback: &Theme) -> Result<Theme> {
     let mut roles = HashMap::new();
-    for role in Role::ALL {
-        let color = if let Some(v) = raw.roles.get(role.key()) {
-            resolve_color(v, &raw.palette)?
+    for (key, v) in &raw.roles {
+        if let Some(role) = Role::from_key(key) {
+            roles.insert(role, resolve_color(v, &raw.palette)?);
         } else {
-            fallback.color(role)
-        };
-        roles.insert(role, color);
+            tracing::warn!("unknown theme role key `{key}`");
+        }
+    }
+    for role in Role::ALL {
+        if !roles.contains_key(&role) {
+            roles.insert(role, fallback.color(role));
+        }
     }
 
     Ok(Theme {

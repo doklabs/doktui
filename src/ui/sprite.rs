@@ -237,7 +237,12 @@ pub fn mascot_anim(anim_tick: u64, theme: &Theme) -> MascotAnim {
         return MascotAnim::Idle;
     }
 
-    if theme.motion.blink_every > 0 {
+    if theme.motion.blink_every > 0 && !theme.mascot.blink.is_empty() {
+        let phase = anim_tick % theme.motion.blink_every;
+        if phase == 0 || phase == 1 {
+            return MascotAnim::Blink;
+        }
+    } else if theme.motion.blink_every > 0 {
         let phase = anim_tick % theme.motion.blink_every;
         if phase == 0 || phase == 1 {
             return MascotAnim::Blink;
@@ -268,10 +273,6 @@ pub fn mascot_sprite_for(anim: MascotAnim) -> &'static Sprite {
         MascotAnim::Spout => &MASCOT_SPOUT,
         MascotAnim::Glitch => &MASCOT_GLITCH,
     }
-}
-
-pub fn mascot_sprite(theme: &Theme, anim_tick: u64) -> &'static Sprite {
-    mascot_sprite_for(mascot_anim(anim_tick, theme))
 }
 
 /// Gentle idle hover bob.

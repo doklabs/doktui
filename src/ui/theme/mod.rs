@@ -14,7 +14,6 @@ use crate::i18n::I18n;
 use crate::services::ssh::ConnectionState;
 
 pub const BRAND: &str = "DokTUI";
-pub const SUBTITLE: &str = "doklabs";
 
 pub fn title_style(theme: &Theme) -> Style {
     theme.style_bold(Role::Primary)
@@ -96,27 +95,13 @@ pub fn connection_badge(theme: &Theme, i18n: &I18n, state: ConnectionState) -> (
     }
 }
 
-pub fn mascot_frame(theme: &Theme, tick: u64) -> &[String] {
-    if theme.motion.enabled
-        && theme.motion.blink_every > 0
-        && (tick / theme.motion.blink_every) % 2 == 1
-        && !theme.mascot.blink.is_empty()
-    {
-        &theme.mascot.blink
-    } else if !theme.mascot.idle.is_empty() {
-        &theme.mascot.idle
-    } else {
-        &theme.mascot.blink
-    }
-}
-
 pub fn bordered_block<'a>(title: &'a str, theme: &Theme) -> Block<'a> {
     ratatui::widgets::Block::default()
         .borders(Borders::ALL)
         .border_set(border::PLAIN)
         .border_style(theme.style(Role::Border))
         .title(Span::styled(format!(" {title} "), theme.style(Role::TextMuted)))
-        .style(Style::default().bg(theme.color(Role::Surface)))
+        .style(surface_style(theme))
 }
 
 /// Dashed border for unfocused controls.
@@ -165,5 +150,5 @@ pub fn panel_block<'a>(title: &'a str, theme: &Theme) -> ratatui::widgets::Block
             format!(" {title} "),
             theme.style_bold(Role::Text),
         ))
-        .style(Style::default().bg(theme.color(Role::Surface)))
+        .style(theme.style_bg(Role::Surface))
 }

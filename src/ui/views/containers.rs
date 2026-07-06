@@ -43,8 +43,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                     muted_style(theme)
                 };
                 ListItem::new(format!(
-                    "{prefix}{} — {} ({})",
-                    c.name, c.status, c.image
+                    "{prefix}{} — {} ({}) [{}]",
+                    c.name,
+                    c.status,
+                    c.image,
+                    short_container_id(&c.id)
                 ))
                 .style(style)
             })
@@ -80,4 +83,12 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             height: 1,
         },
     );
+}
+
+fn short_container_id(id: &str) -> &str {
+    if id.len() > 12 {
+        &id[..12]
+    } else {
+        id
+    }
 }

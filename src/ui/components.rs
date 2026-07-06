@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::event::Message;
 use crate::app::state::AppState;
-use crate::ui::theme::{Role, Theme, panel_block, BORDER_DASHED};
+use crate::ui::theme::{Role, Theme, BORDER_DASHED};
 
 /// Clickable button — dashed when idle, solid accent when focused or hovered.
 pub fn button(
@@ -84,20 +84,6 @@ pub fn button(
         inner,
     );
     state.push_click(area, msg);
-}
-
-pub fn card<'a>(title: &'a str, theme: &Theme) -> Block<'a> {
-    panel_block(title, theme)
-}
-
-pub fn stat(frame: &mut Frame, area: Rect, theme: &Theme, title: &str, value: Line<'_>, value_role: Role) {
-    let block = panel_block(title, theme);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    frame.render_widget(
-        Paragraph::new(value).style(theme.style_bold(value_role)),
-        inner,
-    );
 }
 
 pub fn health_bar(pct: u8, width: usize, theme: &Theme) -> Line<'static> {

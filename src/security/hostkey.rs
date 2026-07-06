@@ -106,6 +106,17 @@ pub fn host_label(host: &str, port: u16) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_label_omits_default_ssh_port() {
+        assert_eq!(host_label("example.com", 22), "example.com");
+        assert_eq!(host_label("example.com", 2222), "example.com:2222");
+    }
+}
+
 #[allow(dead_code)]
 pub fn known_hosts_exists() -> bool {
     paths::known_hosts_path()

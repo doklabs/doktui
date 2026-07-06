@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::state::AppState;
@@ -36,7 +36,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(block, area);
 
     let visible_rows = inner.height as usize;
-    editor_clamp_scroll(state, visible_rows);
+    state.editor_visible_rows.set(visible_rows.max(1));
 
     let source = editor.content();
     let cursor_line = editor.buffer.cursor_line_col().0;
@@ -50,23 +50,25 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let _cursor_line = cursor_line;
 
-    if let Some(status) = &editor.status {
-        let status_area = Rect {
+    if inner.height > 1 {
+        let footer_area = Rect {
             x: inner.x,
             y: inner.y + inner.height.saturating_sub(1),
             width: inner.width,
             height: 1,
         };
-        frame.render_widget(
-            Paragraph::new(status.as_str()).style(muted_style(theme)),
-            status_area,
-        );
+        let hint = render_footer_hint(theme, i18n);
+        let footer = if let Some(status) = &editor.status {
+            Line::from(vec![
+                Span::styled(status.as_str(), muted_style(theme)),
+                Span::raw("  "),
+                hint.spans[0].clone(),
+            ])
+        } else {
+            hint
+        };
+        frame.render_widget(Paragraph::new(footer).style(muted_style(theme)), footer_area);
     }
-}
-
-fn editor_clamp_scroll(state: &AppState, visible_rows: usize) {
-    // AppState is immutable in render — scroll clamping happens in handle_key via mutable ref.
-    let _ = (state, visible_rows);
 }
 
 pub fn render_footer_hint(theme: &crate::ui::theme::Theme, i18n: &crate::i18n::I18n) -> Line<'static> {

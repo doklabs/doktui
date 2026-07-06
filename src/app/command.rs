@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::config::{AppConfig, ServerConfig};
 use crate::i18n::I18n;
+use crate::security::hostkey;
 use crate::services::docker::DockerController;
 use crate::services::provision::RemoteProvisioner;
 use crate::services::routing::{self, DomainSpec};
@@ -90,9 +91,34 @@ impl CommandBus {
                 routing,
             } => self.deploy(server_id, remote_dir, compose, routing),
             Message::RunCronJob(id) => self.run_cron_job(id),
-            Message::DeployDone(_) | Message::Quit | Message::CronJobDone { .. } => {}
+            Message::DeployDone(_) | Message::CronJobDone { .. } => {}
             _ => {}
         }
+    }
+
+    pub fn disconnect_all(&self) {
+        let sessions = self.sessions.clone();
+        tokio::spawn(async move {
+            let mut guard = sessions.lock().await;
+            for (_, session) in guard.iter_mut() {
+                let _ = session.disconnect().await;
+            }
+            guard.clear();
+        });
+    }
+
+    pub fn disconnect_server(&self, server_id: Option<Uuid>) {
+        let Some(server_id) = server_id else {
+            return;
+        };
+        let sessions = self.sessions.clone();
+        tokio::spawn(async move {
+            let mut guard = sessions.lock().await;
+            if let Some(mut session) = guard.remove(&server_id) {
+                tracing::debug!("disconnected SSH session {}", session.server_id);
+                let _ = session.disconnect().await;
+            }
+        });
     }
 
     pub fn load_containers(&self, server_id: Uuid) {
@@ -291,9 +317,10 @@ impl CommandBus {
                     });
                 }
                 Err(SshConnectError::HostKeyChanged { old, new }) => {
-                    let _ = tx.send(Message::SetError(format!(
-                        "host key changed (possible MITM)\n  was: {old}\n  now: {new}"
-                    )));
+                    let msg = hostkey::require_trust(hostkey::HostKeyAction::Changed { old, new })
+                        .unwrap_err()
+                        .to_string();
+                    let _ = tx.send(Message::SetError(msg));
                 }
                 Err(SshConnectError::Failed(e)) => {
                     let _ = tx.send(Message::SetError(e));
@@ -343,9 +370,10 @@ impl CommandBus {
                     return;
                 }
                 Err(SshConnectError::HostKeyChanged { old, new }) => {
-                    let _ = tx.send(Message::ProvisionDone(Err(format!(
-                        "host key changed (possible MITM)\n  was: {old}\n  now: {new}"
-                    ))));
+                    let msg = hostkey::require_trust(hostkey::HostKeyAction::Changed { old, new })
+                        .unwrap_err()
+                        .to_string();
+                    let _ = tx.send(Message::ProvisionDone(Err(msg)));
                     return;
                 }
                 Err(SshConnectError::Failed(e)) => {

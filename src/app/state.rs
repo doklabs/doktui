@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use uuid::Uuid;
 
@@ -266,9 +266,9 @@ pub struct AppState {
     pub log_target: Option<String>,
     pub deploy_form: DeployForm,
     pub pending_action: Option<PendingAction>,
-    pub confirm_yes: bool,
     pub onboarding_complete: bool,
     pub public_key: String,
+    pub public_key_fingerprint: String,
     pub loading: bool,
     pub should_quit: bool,
     pub editor: Option<crate::ui::editor::CanvasEditor>,
@@ -291,6 +291,7 @@ pub struct AppState {
     /// Animation frame counter (~15 fps); separate from housekeeping tick.
     pub anim_tick: u64,
     pub click_regions: RefCell<Vec<ClickRegion>>,
+    pub editor_visible_rows: Cell<usize>,
     pub mouse_pos: Option<(u16, u16)>,
     pub achievement: Option<String>,
 }
@@ -300,6 +301,7 @@ impl AppState {
         servers: Vec<ServerConfig>,
         onboarding_complete: bool,
         public_key: String,
+        public_key_fingerprint: String,
         editor_mode: EditorMode,
         config_ui_mode: ConfigUiMode,
         cron_jobs: Vec<CronJob>,
@@ -339,6 +341,7 @@ impl AppState {
             sidebar_resizing: false,
             anim_tick: 0,
             click_regions: RefCell::new(Vec::new()),
+            editor_visible_rows: Cell::new(20),
             mouse_pos: None,
             achievement: None,
             servers,
@@ -366,9 +369,9 @@ impl AppState {
             log_target: None,
             deploy_form: DeployForm::default(),
             pending_action: None,
-            confirm_yes: false,
             onboarding_complete,
             public_key,
+            public_key_fingerprint,
             loading: false,
             should_quit: false,
             editor: None,

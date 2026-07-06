@@ -12,7 +12,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let subtitle = i18n.t("logs-title");
+    let subtitle = if let Some(name) = &state.log_target {
+        i18n.t_fmt("logs-target", &[("name", name)])
+    } else {
+        i18n.t("logs-title")
+    };
     frame.render_widget(
         Paragraph::new(header_line(theme, &subtitle)),
         ratatui::layout::Rect {

@@ -37,6 +37,7 @@ const HOUSEKEEPING: Duration = Duration::from_millis(1000);
 pub async fn run_tui() -> Result<()> {
     let config = bootstrap()?;
     let public_key = keys::load_public_key_openssh()?;
+    let public_key_fingerprint = keys::public_key_fingerprint().unwrap_or_default();
     let config = Arc::new(Mutex::new(config));
 
     let secrets = Arc::new(Mutex::new(SecretsManager::load_or_create()?));
@@ -64,6 +65,7 @@ pub async fn run_tui() -> Result<()> {
             cfg.servers.clone(),
             cfg.onboarding_complete,
             public_key.trim().to_string(),
+            public_key_fingerprint,
             cfg.editor_mode.clone(),
             cfg.ui_mode.clone(),
             cfg.cron_jobs.clone(),
@@ -127,8 +129,8 @@ pub async fn run_tui() -> Result<()> {
                             }
                         }
                     }
-                    Event::Resize(w, h) => {
-                        update(&mut state, Message::Resize(w, h), &config, &bus).await;
+                    Event::Resize(w, _) => {
+                        update(&mut state, Message::Resize(w), &config, &bus).await;
                     }
                     _ => {}
                 }
@@ -238,6 +240,13 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
 
     if state.error_detail.is_some() && matches!(key.code, KeyCode::Char('E')) {
         return Some(Message::ToggleErrorPanel);
+    }
+
+    if state.error_message.is_some()
+        && !state.error_panel_open
+        && key.code == KeyCode::Esc
+    {
+        return Some(Message::ClearError);
     }
 
     if state.screen.uses_app_shell() {
@@ -529,9 +538,13 @@ async fn update(
 ) {
     match msg {
         Message::Quit => {
+            bus.disconnect_all();
             state.should_quit = true;
         }
         Message::Tick => {
+            if matches!(state.screen, Screen::Home | Screen::Monitoring) {
+                state.metrics_tick = state.metrics_tick.wrapping_add(1);
+            }
             if state.screen == Screen::Monitoring {
                 if let Some(id) = state.selected_server {
                     bus.load_metrics(id);
@@ -557,7 +570,6 @@ async fn update(
                 }
             }
         }
-        Message::GoWelcome => state.screen = Screen::Welcome,
         Message::GoHome => {
             state.go_nav(NavSection::Home);
             state.error_message = None;
@@ -678,8 +690,9 @@ async fn update(
             state.nav_section = NavSection::Deployments;
             state.screen = Screen::Logs;
             state.loading = true;
+            state.log_target = state.selected_container_name();
             if let Some(id) = state.selected_server {
-                let container = state.selected_container_name();
+                let container = state.log_target.clone();
                 bus.load_logs(id, container);
             } else {
                 state.loading = false;
@@ -713,24 +726,27 @@ async fn update(
             state.screen = Screen::Editor;
         }
         Message::EditorKey(key) => {
-            if let Some(editor) = &mut state.editor {
-                use crate::ui::editor::EditorAction;
-                match editor.handle_key(key) {
-                    EditorAction::Quit => {
-                        if let Some(ed) = state.editor.take() {
-                            state.deploy_form.compose = ed.content();
-                        }
-                        state.screen = Screen::Deploy;
+            use crate::ui::editor::EditorAction;
+            let action = if let Some(editor) = state.editor.as_mut() {
+                let action = editor.handle_key(key);
+                let visible = state.editor_visible_rows.get().max(1);
+                editor.clamp_scroll(visible);
+                action
+            } else {
+                EditorAction::None
+            };
+            match action {
+                EditorAction::Quit => {
+                    if let Some(ed) = state.editor.take() {
+                        state.deploy_form.compose = ed.content();
                     }
-                    EditorAction::Saved => {
-                        state.status_message = editor.status.clone();
-                    }
-                    EditorAction::None => {}
+                    state.screen = Screen::Deploy;
                 }
+                EditorAction::Saved => {
+                    state.status_message = Some(state.i18n.t("status-editor-saved"));
+                }
+                EditorAction::None => {}
             }
-        }
-        Message::EditorSaved => {
-            state.status_message = Some(state.i18n.t("status-editor-saved"));
         }
         Message::SubmitServerForm => {
             let form = &state.server_form;
@@ -766,6 +782,9 @@ async fn update(
             }
         }
         Message::SelectServer(id) => {
+            if state.selected_server != Some(id) {
+                bus.disconnect_server(state.selected_server);
+            }
             state.selected_server = Some(id);
         }
         Message::ProvisionServer(id) => {
@@ -791,6 +810,9 @@ async fn update(
             }
         }
         Message::SshStatus(status) => {
+            if let Some(msg) = status.message.clone() {
+                state.status_message = Some(msg);
+            }
             state.set_connection(status);
         }
         Message::ContainersLoaded(result) => {
@@ -916,12 +938,20 @@ async fn update(
             let _ = cfg.save();
             state.cron_jobs = cfg.cron_jobs.clone();
         }
-        Message::CronJobDone { id: _, result } => {
+        Message::CronJobDone { id, result } => {
+            let label = state
+                .cron_jobs
+                .iter()
+                .find(|j| j.id == id)
+                .map(|j| j.label.clone())
+                .unwrap_or_else(|| id.to_string());
             match result {
-                Ok(msg) => state.status_message = Some(state.i18n.t_fmt(
-                    "cmd-schedule-result",
-                    &[("msg", &msg)],
-                )),
+                Ok(msg) => {
+                    state.status_message = Some(state.i18n.t_fmt(
+                        "cmd-schedule-result",
+                        &[("label", &label), ("msg", &msg)],
+                    ));
+                }
                 Err(e) => push_error(state, e),
             }
         }
@@ -1111,8 +1141,7 @@ async fn update(
         | Message::RemoveContainer { .. } => {
             state.loading = true;
         }
-        Message::Key(_) => {}
-        Message::Resize(w, _) => {
+        Message::Resize(w) => {
             state.sidebar_width = clamp_sidebar_width(state.sidebar_width, w);
             let mut cfg = config.lock().await;
             cfg.sidebar_width = state.sidebar_width;

@@ -140,4 +140,15 @@ mod tests {
         let ed = CanvasEditor::open("test.env", "FOO=bar\n", EditorMode::Normal);
         assert_eq!(ed.content(), "FOO=bar\n");
     }
+
+    #[test]
+    fn clamp_scroll_stays_within_bounds() {
+        let mut ed = CanvasEditor::open("test.env", "a\nb\nc\nd\ne\n", EditorMode::Normal);
+        ed.scroll_row = 100;
+        ed.clamp_scroll(2);
+        assert_eq!(ed.scroll_row, 4);
+        ed.scroll_row = 0;
+        ed.clamp_scroll(10);
+        assert_eq!(ed.scroll_row, 0);
+    }
 }

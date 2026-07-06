@@ -91,7 +91,7 @@ pub fn validate_domain_spec(spec: &DomainSpec) -> Result<()> {
     if host.starts_with('*') && !host.starts_with("*.") {
         bail!("wildcard domain must start with *., e.g. *.example.com");
     }
-    if spec.port == 0 || spec.port > 65535 {
+    if spec.port == 0 {
         bail!("port must be between 1 and 65535");
     }
     let service = spec.service.trim();

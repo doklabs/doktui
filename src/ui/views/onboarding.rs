@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::event::Message;
 use crate::app::state::AppState;
+use crate::security::hostkey;
 use crate::ui::components::button;
 use crate::ui::layout::centered_rect;
 use crate::ui::sprite::{mascot_anim, mascot_bob, mascot_palette, mascot_sprite_for, render_sprite};
@@ -45,7 +46,7 @@ fn render_welcome_full(frame: &mut Frame, area: Rect, state: &AppState, theme: &
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Length(1),
             Constraint::Length(2),
             Constraint::Length(1),
@@ -94,7 +95,7 @@ fn render_welcome_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
         .margin(0)
         .constraints([
             Constraint::Length(1), // title (mascot dropped)
-            Constraint::Length(3), // ssh key — the point of onboarding
+            Constraint::Length(4), // ssh key — the point of onboarding
             Constraint::Length(1), // stepper
             Constraint::Length(1), // actions (single combined line)
             Constraint::Min(0),    // footer/status — collapses first
@@ -125,7 +126,7 @@ fn render_actions_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
         .constraints([
             Constraint::Min(0),
             Constraint::Length(14),
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Length(8),
             Constraint::Min(0),
         ])
@@ -290,13 +291,21 @@ fn render_ssh_key_box(frame: &mut Frame, area: Rect, state: &AppState, theme: &T
     let hint_len = 10usize;
     let key_width = content.width.saturating_sub(hint_len as u16 + 1) as usize;
     let key = truncate_middle(&state.public_key, key_width);
-    let line = Line::from(vec![
-        Span::styled(key, success_style(theme)),
-        Span::raw(" "),
-        Span::styled(i18n.t("welcome-ssh-copy"), accent_style(theme)),
-    ]);
+    let fp = truncate_middle(&state.public_key_fingerprint, key_width);
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(key, success_style(theme)),
+            Span::raw(" "),
+            Span::styled(i18n.t("welcome-ssh-copy"), accent_style(theme)),
+        ]),
+        Line::from(vec![
+            Span::styled(i18n.t("welcome-ssh-fingerprint"), muted_style(theme)),
+            Span::raw(" "),
+            Span::styled(fp, muted_style(theme)),
+        ]),
+    ];
     frame.render_widget(
-        Paragraph::new(line).alignment(Alignment::Center),
+        Paragraph::new(lines).alignment(Alignment::Center),
         content,
     );
 }
@@ -379,12 +388,20 @@ pub fn render_host_key(frame: &mut Frame, area: ratatui::layout::Rect, state: &A
     let theme = &state.theme;
     let i18n = &state.i18n;
     let prompt = state.host_key_prompt.as_ref();
-    let panel_title = format!(" {} ", i18n.t("hostkey-title"));
+    let host_label = prompt
+        .map(|p| hostkey::host_label(&p.host, p.port))
+        .unwrap_or_default();
+    let panel_title = if host_label.is_empty() {
+        format!(" {} ", i18n.t("hostkey-title"))
+    } else {
+        format!(" {} — {} ", i18n.t("hostkey-title"), host_label)
+    };
     let block = panel_block(&panel_title, theme).style(title_style(theme));
     let text = if let Some(p) = prompt {
+        let label = hostkey::host_label(&p.host, p.port);
         i18n.t_fmt(
             "hostkey-trust",
-            &[("host", &p.host), ("fingerprint", &p.fingerprint)],
+            &[("host", &label), ("fingerprint", &p.fingerprint)],
         )
     } else {
         i18n.t("hostkey-none")

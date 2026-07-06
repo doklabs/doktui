@@ -7,6 +7,7 @@ pub struct TextBuffer {
     cursor: usize,
 }
 
+#[allow(dead_code)] // reserved for Vim motions and future editor features
 impl TextBuffer {
     pub fn from_str(s: &str) -> Self {
         Self {

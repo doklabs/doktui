@@ -4,9 +4,14 @@ use serde::Deserialize;
 
 use sha2::{Digest, Sha256};
 
+use minisign_verify::{PublicKey, Signature};
+
 use crate::config::{InstallMethod, read_install_marker};
 
 const GITHUB_RELEASES: &str = "https://api.github.com/repos/doklabs/doktui/releases/latest";
+
+/// Minisign public key (base64) for release verification. Set when releases are signed.
+const RELEASE_PUBLIC_KEY: &str = "";
 
 #[derive(Debug, Clone)]
 pub struct UpdateNotice {
@@ -100,6 +105,17 @@ impl Updater {
             }
         } else {
             tracing::warn!("no {checksum_name} sidecar — skipping checksum verification");
+        }
+
+        let sig_name = format!("{binary_name}.minisig");
+        if !RELEASE_PUBLIC_KEY.is_empty() {
+            if let Some(sig_asset) = release.assets.iter().find(|a| a.name == sig_name) {
+                let sig_text = download_text(&sig_asset.browser_download_url).await?;
+                verify_minisign(&bytes, &sig_text, RELEASE_PUBLIC_KEY)?;
+                println!("Minisign signature verified.");
+            } else {
+                tracing::warn!("no {sig_name} sidecar — skipping minisign verification");
+            }
         }
 
         swap_binary(&bytes)?;
@@ -229,8 +245,17 @@ pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
 }
 
 /// Verify minisign signature when a `.minisig` file accompanies the release.
-pub fn verify_minisign(_bytes: &[u8], _sig_path: &std::path::Path, _pubkey: &str) -> Result<()> {
-    bail!("minisign verification requires release signing key (not configured in dev builds)")
+pub fn verify_minisign(bytes: &[u8], sig_text: &str, pubkey_b64: &str) -> Result<()> {
+    if pubkey_b64.is_empty() {
+        bail!("minisign release public key not configured");
+    }
+    let public_key =
+        PublicKey::from_base64(pubkey_b64).context("invalid minisign public key encoding")?;
+    let signature = Signature::decode(sig_text).context("invalid minisign signature file")?;
+    public_key
+        .verify(bytes, &signature, true)
+        .context("minisign signature verification failed")?;
+    Ok(())
 }
 
 #[cfg(test)]
