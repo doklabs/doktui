@@ -5,7 +5,7 @@ pub mod resolve;
 pub use model::{Role, Theme};
 pub use registry::ThemeRegistry;
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders};

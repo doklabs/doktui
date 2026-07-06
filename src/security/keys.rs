@@ -57,6 +57,7 @@ pub fn public_key_fingerprint() -> Result<String> {
 
 #[cfg(unix)]
 fn enforce_key_permissions(path: &Path) -> Result<()> {
+    use anyhow::bail;
     use std::os::unix::fs::PermissionsExt;
 
     let meta = fs::metadata(path)?;
