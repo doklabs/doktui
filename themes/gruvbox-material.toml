@@ -1,0 +1,62 @@
+[meta]
+name = "gruvbox-material"
+display_name = "Gruvbox Material"
+author = "doklabs"
+
+# Gruvbox Material dark — sainnhe/gruvbox-material palette
+[palette]
+void = "#282828"
+surface = "#32302f"
+panel = "#3c3836"
+border = "#504945"
+purple = "#d3869b"
+cyan = "#7daea3"
+green = "#a9b665"
+yellow = "#d8a657"
+pink = "#ea6962"
+gold = "#e78a4e"
+mist = "#928374"
+text = "#ebdbb2"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "purple"
+accent = "cyan"
+success = "green"
+warning = "yellow"
+danger = "pink"
+selection = "purple"
+cursor = "cyan"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]

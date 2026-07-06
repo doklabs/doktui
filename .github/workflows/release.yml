@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux-gnu:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            linker: ""
+          - target: aarch64-unknown-linux-gnu
+            linker: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross linker
+        if: matrix.linker != ''
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
+      - name: Package
+        run: |
+          name="doktui-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/doktui" "$name"
+          chmod +x "$name"
+          sha256sum "$name" | awk '{print $1 "  '"$name"'"}' > "${name}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            doktui-${{ matrix.target }}
+            doktui-${{ matrix.target }}.sha256
+
+  build-linux-musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target x86_64-unknown-linux-musl
+      - run: |
+          name="doktui-x86_64-unknown-linux-musl"
+          cp target/x86_64-unknown-linux-musl/release/doktui "$name"
+          chmod +x "$name"
+          sha256sum "$name" | awk '{print $1 "  '"$name"'"}' > "${name}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-unknown-linux-musl
+          path: |
+            doktui-x86_64-unknown-linux-musl
+            doktui-x86_64-unknown-linux-musl.sha256
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }}
+      - run: |
+          name="doktui-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/doktui" "$name"
+          chmod +x "$name"
+          shasum -a 256 "$name" | awk '{print $1 "  '"$name"'"}' > "${name}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            doktui-${{ matrix.target }}
+            doktui-${{ matrix.target }}.sha256
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - shell: pwsh
+        run: |
+          $name = "doktui-x86_64-pc-windows-msvc.exe"
+          Copy-Item target/release/doktui.exe $name
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "${hash}  ${name}" | Out-File -Encoding ascii "${name}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-pc-windows-msvc
+          path: |
+            doktui-x86_64-pc-windows-msvc.exe
+            doktui-x86_64-pc-windows-msvc.exe.sha256
+
+  release:
+    needs: [build-linux-gnu, build-linux-musl, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

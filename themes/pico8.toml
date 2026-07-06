@@ -1,0 +1,61 @@
+[meta]
+name = "pico8"
+display_name = "PICO-8"
+author = "doklabs"
+
+[palette]
+void = "#1a1b26"
+surface = "#242436"
+panel = "#1e2030"
+border = "#3b4261"
+purple = "#bb9af7"
+cyan = "#7dcfff"
+green = "#73daca"
+yellow = "#e0af68"
+pink = "#f7768e"
+gold = "#e0af68"
+mist = "#565f89"
+text = "#c0caf5"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "purple"
+accent = "cyan"
+success = "green"
+warning = "yellow"
+danger = "pink"
+selection = "purple"
+cursor = "cyan"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]

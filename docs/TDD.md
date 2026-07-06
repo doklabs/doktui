@@ -1,28 +1,28 @@
 # TDD — DokTUI
 
 **Status:** Draft
-**Tanggal:** 6 Juli 2026
-**Proyek:** Doklabs (open source)
-**Versi:** 0.1
-**Referensi:** [PRD.md](./PRD.md)
+**Date:** July 6, 2026
+**Project:** Doklabs (open source)
+**Version:** 0.1
+**Reference:** [PRD.md](./PRD.md)
 
 ---
 
-## 1. Tujuan Dokumen
+## 1. Purpose
 
-Dokumen ini menjabarkan desain teknis DokTUI: bagaimana komponen-komponen diimplementasikan untuk memenuhi kebutuhan pada PRD. Fokusnya pada arsitektur modul, pilihan library, alur data, model konkurensi, layer SSH, editor, keamanan, dan pipeline build/rilis. Detail UI visual berada di luar cakupan dokumen ini kecuali yang berdampak pada arsitektur.
+This document details DokTUI's technical design: how components are implemented to satisfy the requirements in the PRD. It focuses on module architecture, library choices, data flow, the concurrency model, the SSH layer, the editor, security, and the build/release pipeline. Visual UI details are out of scope except where they affect architecture (see [DESIGN.md](./DESIGN.md)).
 
 ---
 
-## 2. Ringkasan Arsitektur
+## 2. Architecture Overview
 
-DokTUI adalah aplikasi TUI **single-binary** berbasis Rust yang berjalan di device lokal pengguna. Semua orkestrasi dilakukan dari lokal; server remote hanya menjalankan Docker + Traefik dan menerima perintah lewat SSH.
+DokTUI is a **single-binary** Rust TUI application that runs on the user's local device. All orchestration happens locally; the remote server only runs Docker + Traefik and receives commands over SSH.
 
-Arsitektur mengikuti pola **berlapis (layered)** dengan pemisahan jelas antara UI, state/logika aplikasi, dan I/O (SSH, filesystem, jaringan).
+The architecture follows a **layered** pattern with a clear separation between UI, application state/logic, and I/O (SSH, filesystem, network).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                        DokTUI (lokal)                         │
+│                        DokTUI (local)                         │
 │                                                                │
 │  ┌──────────────┐   events    ┌───────────────────────────┐   │
 │  │   UI Layer   │ ──────────► │   Application Core (State) │   │
@@ -40,10 +40,10 @@ Arsitektur mengikuti pola **berlapis (layered)** dengan pemisahan jelas antara U
 │                               │  - Updater                  │   │
 │                               └────────────┬───────────────┘   │
 └────────────────────────────────────────────┼──────────────────┘
-                                             │ SSH (terenkripsi)
+                                             │ SSH (encrypted)
                                              ▼
                               ┌────────────────────────────┐
-                              │   Server Remote             │
+                              │   Remote server             │
                               │   Docker + Traefik          │
                               └────────────────────────────┘
 ```
@@ -52,69 +52,75 @@ Arsitektur mengikuti pola **berlapis (layered)** dengan pemisahan jelas antara U
 
 ## 3. Tech Stack
 
-| Kebutuhan | Pilihan | Alasan |
+| Need | Choice | Rationale |
 |---|---|---|
-| Bahasa | Rust (edition 2021) | Performa, binary tunggal, footprint kecil, memory-safe |
-| TUI framework | `ratatui` + `crossterm` | Portabilitas terminal lintas OS (macOS/Linux/Windows) |
-| Async runtime | `tokio` | Konkurensi untuk banyak koneksi SSH & streaming log |
-| SSH | `russh` (pure-Rust) | Tanpa dependensi C, kontrol penuh untuk auto-reconnect; kandidat alternatif `ssh2` (libssh2) |
-| Editor buffer | `ropey` (rope data structure) | Efisien untuk edit teks besar |
-| Syntax highlighting | `syntect` atau `tree-sitter` | Highlighting YAML/TOML/ENV/Dockerfile/JSON |
-| Serialisasi config | `serde` + `toml` | Config lokal berbasis TOML |
-| Enkripsi at-rest | `age` / `chacha20poly1305` | Enkripsi secrets & key di device lokal |
-| OS keychain | `keyring` crate | Akses Keychain/Credential Manager/Secret Service |
-| Self-update | `self_update` (dimodifikasi) | Update manual dengan verifikasi checksum/signature |
-| Verifikasi signature | `minisign` / `cosign` (TBD) | Integritas rilis |
-| CLI args | `clap` | Parsing argumen (`doktui update`, dll.) |
-| Logging | `tracing` + `tracing-subscriber` | Structured logging dengan redaksi secret |
+| Language | Rust (edition 2021) | Performance, single binary, small footprint, memory-safe |
+| TUI framework | `ratatui` + `crossterm` | Cross-OS terminal portability (macOS/Linux/Windows) |
+| Async runtime | `tokio` | Concurrency for many SSH connections & log streaming |
+| SSH | `russh` (pure-Rust) | No C dependency, full control for auto-reconnect |
+| Editor buffer | `ropey` (rope data structure) | Efficient for large text edits |
+| Syntax highlighting | Custom line highlighter (`src/ui/editor/highlight.rs`) | Lightweight per-line rules for YAML/TOML/ENV/Dockerfile/JSON; no extra native deps |
+| Config serialization | `serde` + `toml` | TOML-based local config |
+| At-rest encryption | `chacha20poly1305` | Encrypt secrets & keys on the local device |
+| OS keychain | `keyring` crate | Access Keychain/Credential Manager/Secret Service |
+| Update verification | `minisign-verify` + `sha2` | Release integrity (SHA-256 + signature) |
+| CLI args | `clap` | Argument parsing (`doktui update`, etc.) |
+| Logging | `tracing` + `tracing-subscriber` | Structured logging with secret redaction |
+| Cron | `cron` + `chrono` | Scheduled task expressions |
 
 ---
 
-## 4. Struktur Modul
+## 4. Module Structure
 
-Struktur crate (workspace tunggal, dipecah jadi beberapa modul):
+Crate structure (single workspace, split into modules):
 
 ```
 doktui/
 ├── src/
-│   ├── main.rs               # entrypoint, parsing CLI, bootstrap runtime
+│   ├── main.rs               # entrypoint, CLI parsing, runtime bootstrap
 │   ├── app/
-│   │   ├── mod.rs            # Application core, event loop
-│   │   ├── state.rs         # AppState, model data terpusat
-│   │   ├── event.rs         # definisi Event & Message
-│   │   └── command.rs       # Command dispatcher (async)
+│   │   ├── mod.rs            # application core, event loop
+│   │   ├── state.rs          # AppState, centralized data model
+│   │   ├── event.rs          # Event & Message definitions
+│   │   └── command.rs        # command dispatcher (async)
 │   ├── ui/
-│   │   ├── mod.rs           # root render
-│   │   ├── views/           # dashboard, server list, logs, dll.
-│   │   ├── editor/          # canvas editor (vim & non-vim)
-│   │   └── theme.rs         # karakter/visual UI (gamifikasi)
+│   │   ├── mod.rs            # root render
+│   │   ├── views/            # dashboard, server list, logs, etc.
+│   │   ├── editor/           # canvas editor (vim & non-vim)
+│   │   ├── layout/           # shell, sidebar, overlays
+│   │   ├── components.rs     # reusable widgets (button, card, health_bar)
+│   │   ├── sprite.rs         # mascot sprites (half-block)
+│   │   ├── anim.rs           # tick-based animation primitives
+│   │   └── theme/            # modular theme system (see DESIGN.md)
 │   ├── services/
-│   │   ├── ssh/             # SSH manager + auto-reconnect
-│   │   ├── docker.rs        # perintah Docker via SSH
-│   │   ├── traefik.rs       # provisioning Traefik
-│   │   ├── provision.rs     # cek & install Docker/Traefik remote
-│   │   ├── secrets.rs       # enkripsi/dekripsi secrets
-│   │   └── updater.rs       # update manual binary
+│   │   ├── ssh/              # SSH manager + auto-reconnect
+│   │   ├── docker.rs         # Docker commands over SSH
+│   │   ├── traefik.rs        # Traefik provisioning
+│   │   ├── provision.rs      # check & remote-install Docker/Traefik
+│   │   ├── routing.rs        # Traefik label generation / compose injection
+│   │   ├── secrets.rs        # secret encryption/decryption
+│   │   ├── cron.rs           # schedule expression handling
+│   │   └── updater.rs        # manual binary update
 │   ├── config/
-│   │   ├── mod.rs           # load/save config lokal
-│   │   └── paths.rs         # path per-OS
+│   │   ├── mod.rs            # load/save local config
+│   │   └── paths.rs          # per-OS paths
 │   └── security/
-│       ├── keys.rs          # generate & simpan SSH key khusus DokTUI
-│       ├── keychain.rs      # integrasi OS keychain
-│       └── hostkey.rs       # verifikasi known_hosts
-├── build.rs
+│       ├── keys.rs           # generate & store the dedicated DokTUI SSH key
+│       ├── keychain.rs       # OS keychain integration
+│       └── hostkey.rs        # known_hosts verification
+├── themes/                   # bundled TOML themes
 └── Cargo.toml
 ```
 
 ---
 
-## 5. Model Konkurensi & Event Loop
+## 5. Concurrency Model & Event Loop
 
-DokTUI memakai arsitektur **message-passing** ala Elm/TEA (The Elm Architecture) di atas `tokio`.
+DokTUI uses a **message-passing** architecture in the style of Elm/TEA (The Elm Architecture) on top of `tokio`.
 
-- **Main loop** (single-threaded pada UI) menangani input terminal dan render.
-- **Background tasks** (`tokio` tasks) menangani I/O: koneksi SSH, streaming log, pengecekan versi, provisioning. Mereka berkomunikasi ke core lewat `tokio::sync::mpsc` channel.
-- Setiap peristiwa (keypress, hasil SSH, tick timer) menjadi `Message` yang masuk ke antrian; core mengolahnya, memperbarui `AppState`, lalu memicu re-render.
+- The **main loop** (single-threaded on the UI) handles terminal input and rendering.
+- **Background tasks** (`tokio` tasks) handle I/O: SSH connections, log streaming, version checks, provisioning. They communicate with the core via `tokio::sync::mpsc` channels.
+- Every event (keypress, SSH result, tick timer) becomes a `Message` placed on the queue; the core processes it, updates `AppState`, and triggers a re-render.
 
 ```
 [terminal input] ─┐
@@ -122,145 +128,151 @@ DokTUI memakai arsitektur **message-passing** ala Elm/TEA (The Elm Architecture)
 [timer ticks]     ┘
 ```
 
-Keuntungan: render tidak pernah blocking oleh I/O jaringan, sehingga UI tetap responsif (mendukung tujuan "tidak terasa putus-putus").
+Benefit: rendering is never blocked by network I/O, so the UI stays responsive (supporting the "never feels choppy" goal). See [INTERACTION-AND-POLISH.md](./INTERACTION-AND-POLISH.md) for the frame/housekeeping tick split.
 
 ---
 
-## 6. Layer SSH & Auto-Reconnect
+## 6. SSH Layer & Auto-Reconnect
 
-Ini komponen paling kritikal untuk UX. Desain:
+This is the most UX-critical component. Design:
 
-- **Connection pool**: satu koneksi persisten per server terdaftar, dikelola oleh `SshManager`.
-- **State machine koneksi**: `Disconnected → Connecting → Connected → Reconnecting`. Transisi dipublikasikan ke UI sebagai indikator status.
-- **Auto-reconnect (default aktif)**: saat koneksi putus, manager otomatis mencoba reconnect dengan **exponential backoff + jitter** (mis. 1s, 2s, 4s, … hingga batas maksimum), tanpa intervensi pengguna.
-- **Keep-alive**: kirim SSH keep-alive/heartbeat periodik untuk mendeteksi koneksi mati lebih cepat.
-- **Command queue**: perintah yang dikirim saat koneksi sedang down di-queue (atau ditandai gagal dengan retry) sehingga sesi terasa mulus.
-- **Multiplexing**: gunakan channel SSH terpisah untuk streaming log vs. eksekusi perintah, agar log real-time tidak memblok perintah interaktif.
+- **Connection pool**: one persistent connection per registered server, managed by `SshManager`.
+- **Connection state machine**: `Disconnected → Connecting → Connected → Reconnecting`. Transitions are published to the UI as status indicators.
+- **Auto-reconnect (on by default)**: when a connection drops, the manager automatically retries with **exponential backoff + jitter** (e.g., 1s, 2s, 4s, … up to a maximum), without user intervention.
+- **Keep-alive**: periodic SSH keep-alive/heartbeat to detect dead connections faster.
+- **Command queue**: commands sent while the connection is down are queued (or marked failed with retry) so the session feels seamless.
+- **Multiplexing**: use separate SSH channels for log streaming vs. command execution, so real-time logs don't block interactive commands.
 
-Verifikasi host key dilakukan lewat modul `security/hostkey.rs` terhadap `known_hosts` lokal; perubahan fingerprint memicu peringatan (mitigasi MITM).
-
----
-
-## 7. Provisioning Remote (Cek & Install Docker/Traefik)
-
-Alur pada `services/provision.rs`:
-
-1. Setelah SSH terhubung, jalankan probe: `command -v docker`, `docker compose version`, dan cek container/servis Traefik.
-2. Jika **belum ada**:
-   - Deteksi OS/distro server (`/etc/os-release`).
-   - Jalankan instalasi Docker (mis. script resmi `get.docker.com`) via SSH.
-   - Deploy Traefik sebagai container dengan konfigurasi default (entrypoints, provider Docker, resolver TLS Let's Encrypt).
-   - Verifikasi hasil instalasi.
-3. Jika **sudah ada** → lanjut ke dashboard.
-
-Setiap langkah menampilkan progress di UI; kegagalan menampilkan pesan actionable, bukan stack trace mentah.
+Host-key verification is done in `security/hostkey.rs` against the local `known_hosts`; a fingerprint change triggers a warning (MITM mitigation).
 
 ---
 
-## 8. Deploy & Manajemen Container
+## 7. Remote Provisioning (Check & Install Docker/Traefik)
 
-- **Sumber deploy**: Git repo (clone/pull di server), Docker image (pull), atau Docker Compose (upload/sinkron compose file).
-- **Eksekusi**: DokTUI menyusun perintah `docker`/`docker compose` dan mengirimnya via SSH; output di-stream balik.
-- **Routing Traefik**: label Traefik disuntikkan ke container/compose (host rule, entrypoint, TLS) berdasarkan domain yang dikonfigurasi pengguna.
-- **Env & secrets**: di-inject saat runtime; nilai sensitif tidak ditulis plaintext ke server config maupun log.
-- **Logs**: streaming `docker logs -f` lewat channel SSH khusus.
+Flow in `services/provision.rs`:
+
+1. After SSH connects, run probes: `command -v docker`, `docker compose version`, and check the Traefik container/service.
+2. If **absent**:
+   - Detect the server OS/distro (`/etc/os-release`).
+   - Run the Docker install (e.g., the official `get.docker.com` script) over SSH.
+   - Deploy Traefik as a container with a default configuration (entrypoints, Docker provider, Let's Encrypt TLS resolver).
+   - Verify the install result.
+3. If **present** → continue to the dashboard.
+
+Each step shows progress in the UI; failures show an actionable message, not a raw stack trace.
+
+> Note: Traefik provisioning also creates a shared `doktui-network` and can auto-migrate a legacy Traefik install — see [TRAEFIK-ROUTING.md](./TRAEFIK-ROUTING.md).
+
+---
+
+## 8. Deploy & Container Management
+
+- **Deploy sources**: Git repo (clone/pull on the server), Docker image (pull), or Docker Compose (upload/sync a compose file).
+- **Execution**: DokTUI composes `docker`/`docker compose` commands and sends them over SSH; output is streamed back.
+- **File transport**: compose and `.env` are streamed via `write_remote_file` (`cat > path` with chunking) to avoid shell `ARG_MAX` limits.
+- **Traefik routing**: Traefik labels are injected into the compose (host rule, entrypoint, TLS) based on the user-configured domain, and the service is attached to `doktui-network`. See [TRAEFIK-ROUTING.md](./TRAEFIK-ROUTING.md).
+- **Env & secrets**: injected at runtime; sensitive values are never written as plaintext to server config or logs.
+- **Post-deploy verification**: after `docker compose up`, DokTUI verifies the container is running and reports routing status.
+- **Logs**: streamed via a dedicated SSH channel.
 
 ---
 
 ## 9. Canvas Code Editor
 
-- **Buffer**: struktur `ropey` untuk edit efisien.
-- **Mode**: `Vim` (modal: normal/insert/visual, subset motion & command umum) dan `non-Vim` (editing standar). Mode dipilih di config, dapat diganti runtime.
-- **Syntax highlighting**: `syntect` (atau `tree-sitter`) untuk YAML, TOML, ENV, Dockerfile, JSON. Highlighting dijalankan incremental agar tidak memblok render.
-- **File target**: config, `docker-compose.yml`, `.env`, Dockerfile — bisa file lokal maupun file remote yang di-fetch via SSH lalu di-sync balik.
-- **Keamanan**: saat mengedit file berisi secret, editor menghormati aturan redaksi log dan tidak menuliskan buffer ke lokasi temporer tanpa proteksi.
+- **Buffer**: a `ropey` structure for efficient edits.
+- **Modes**: `Vim` (modal: normal/insert/visual, a subset of common motions & commands) and `non-Vim` (standard editing). The mode is chosen in config and can be switched at runtime.
+- **Syntax highlighting**: a custom per-line highlighter in `src/ui/editor/highlight.rs` for YAML, TOML, ENV, Dockerfile, and JSON. Highlighting is computed per visible line so it does not block rendering.
+- **Target files**: config, `docker-compose.yml`, `.env`, Dockerfile — both local files and remote files fetched over SSH and synced back.
+- **Security**: when editing files containing secrets, the editor honors the log-redaction rules and does not write the buffer to unprotected temporary locations.
 
 ---
 
-## 10. Konfigurasi & Penyimpanan Lokal
+## 10. Configuration & Local Storage
 
-- **Lokasi config**: `~/.config/doktui/` (macOS/Linux), `%APPDATA%\doktui\` (Windows) — di-resolve oleh `config/paths.rs` (crate `directories`).
+- **Config location**: `~/.config/doktui/` (macOS/Linux), `%APPDATA%\doktui\` (Windows) — resolved by `config/paths.rs` (the `directories` crate).
 - **Format**: TOML via `serde`.
-- **Isi**: daftar server, preferensi editor (vim/non-vim), tema UI, flag opt-out update.
-- **Secrets & key**: TIDAK disimpan plaintext. Private key khusus DokTUI dan secrets aplikasi dienkripsi at-rest (`age`/`chacha20poly1305`), dengan opsi menyimpan di OS keychain via crate `keyring`.
-- **Permission**: file key dipaksa `0600` (macOS/Linux) / ACL setara (Windows); DokTUI menolak jalan jika permission terlalu longgar.
+- **Contents**: server list, editor preferences (vim/non-vim), UI theme, update opt-out flag, ACME email.
+- **Secrets & keys**: NOT stored as plaintext. The dedicated DokTUI private key and app secrets are encrypted at rest (`chacha20poly1305`), with the option to store in the OS keychain via the `keyring` crate.
+- **Permissions**: key files are forced to `0600` (macOS/Linux) / equivalent ACLs (Windows); DokTUI refuses to run if permissions are too loose.
 
 ---
 
-## 11. Keamanan (Implementasi)
+## 11. Security (Implementation)
 
-Mengacu pada §9 PRD, implementasi teknisnya:
+Referencing PRD §9, the technical implementation:
 
-- **Generate key khusus DokTUI** saat onboarding (`security/keys.rs`) — Ed25519 keypair, terpisah dari key sistem pengguna, mudah dicabut.
-- **Penyimpanan**: prioritas OS keychain; fallback file terenkripsi. Dukungan passphrase-protected key & integrasi `ssh-agent`.
-- **Integritas update**: verifikasi SHA-256 + signature (minisign/cosign) sebelum swap binary; tolak jika gagal. Semua unduhan HTTPS.
-- **Host key verification**: `known_hosts` lokal, peringatan saat fingerprint berubah.
-- **Redaksi log**: layer `tracing` menyaring secret sebelum ditulis.
-- **Tanpa telemetry**: satu-satunya koneksi keluar default adalah pengecekan versi (opt-out tersedia).
-- **Konfirmasi aksi destruktif**: hapus container / overwrite config butuh konfirmasi eksplisit.
+- **Generate a dedicated DokTUI key** during onboarding (`security/keys.rs`) — an Ed25519 keypair, separate from the user's system key, easy to revoke.
+- **Storage**: OS keychain first; encrypted-file fallback. Support for passphrase-protected keys & `ssh-agent` integration.
+- **Update integrity**: verify SHA-256 + minisign signature before swapping the binary; reject on failure. All downloads over HTTPS.
+- **Host-key verification**: local `known_hosts`, warning on fingerprint change.
+- **Log redaction**: the `tracing` layer filters secrets before writing.
+- **No telemetry**: the only default outbound connection is the version check (opt-out available).
+- **Destructive-action confirmation**: removing a container / overwriting config requires explicit confirmation.
 
 ---
 
 ## 12. Updater (Manual)
 
-Modul `services/updater.rs`:
+`services/updater.rs`:
 
-- **Notify-on-launch**: task async mengecek endpoint rilis (mis. GitHub Releases API) saat startup, non-blocking; tampilkan notice bila ada versi baru.
-- **`doktui update`**: unduh binary sesuai OS/arsitektur → verifikasi checksum & signature → swap in-place (atomic rename) → tampilkan changelog.
-- **Deteksi metode instalasi**: baca marker instalasi; jika via package manager (Homebrew/winget/scoop/AUR), arahkan ke manajer paket alih-alih self-update.
-- **Opt-out**: flag config mematikan seluruh pengecekan versi.
+- **Notify-on-launch**: an async task checks the release endpoint (e.g., the GitHub Releases API) at startup, non-blocking; shows a notice if a newer version exists.
+- **`doktui update`**: download the binary matching the OS/architecture → verify checksum & signature → swap in place (atomic rename) → show changelog.
+- **Install-method detection**: read an install marker; if installed via a package manager (Homebrew/winget/scoop/AUR), point to the package manager instead of self-updating.
+- **Opt-out**: a config flag disables all version checking.
 
 ---
 
-## 13. Build, Rilis & Distribusi
+## 13. Build, Release & Distribution
 
-- **Cross-compilation** lewat CI (mis. `cargo` + `cross` / target khusus) untuk matriks:
+- **Cross-compilation** via CI for the matrix:
   - macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
-  - Linux: `x86_64-unknown-linux-gnu` (dan/atau `-musl`), `aarch64-unknown-linux-gnu`
+  - Linux: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-gnu` (musl for maximum static portability)
   - Windows: `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`
-- **Artefak**: prebuilt binary + file checksum + signature per target, dipublikasikan ke release repo publik.
+- **Artifacts**: prebuilt binary + checksum file + signature per target, published to the public release repo.
 - **Installer**:
-  - macOS/Linux: skrip `curl -fsSL … | sh` yang deteksi OS/arch, unduh binary, verifikasi checksum, taruh di PATH.
-  - Windows: skrip `irm … | iex` / installer `.exe`, plus opsi `winget`/`scoop`.
-- **Tanpa toolchain Rust** di sisi pengguna.
+  - macOS/Linux: a `curl -fsSL … | sh` script that detects OS/arch, downloads the binary, verifies the checksum, and places it on PATH.
+  - Windows: an `irm … | iex` script / `.exe` installer, plus `winget`/`scoop` options.
+- **No Rust toolchain** required on the user's side.
+
+CI lives in `.github/workflows/` (`ci.yml` for multi-OS check/test + musl build, `release.yml` for tagged multi-arch artifacts).
 
 ---
 
-## 14. Penanganan Error & Ketahanan
+## 14. Error Handling & Resilience
 
-- Error jaringan/SSH ditangani oleh state machine reconnect (§6), bukan crash.
-- Kegagalan perintah remote ditampilkan dengan konteks (perintah, exit code, stderr terkurasi).
-- Panik di background task tidak boleh menjatuhkan UI; task diisolasi dan dilaporkan sebagai error state.
-- Config corrupt → fallback ke default dengan peringatan, bukan gagal total.
-
----
-
-## 15. Strategi Pengujian
-
-- **Unit test**: parser probe, penyusunan perintah Docker/Traefik, logika backoff reconnect, enkripsi/dekripsi secrets.
-- **Integration test**: SSH manager terhadap server Docker uji (container SSHD) — termasuk skenario koneksi putus untuk memvalidasi auto-reconnect.
-- **Editor test**: operasi buffer (`ropey`), mode Vim motion, highlighting.
-- **Security test**: verifikasi checksum/signature update ditolak saat dimanipulasi; permission key enforcement; redaksi log.
-- **Cross-platform CI**: jalankan test pada macOS, Linux, Windows.
-- **Verifikasi rilis**: smoke test binary hasil cross-compile per target.
+- Network/SSH errors are handled by the reconnect state machine (§6), not by crashing.
+- Remote command failures are shown with context (command, exit code, curated stderr).
+- A panic in a background task must not bring down the UI; tasks are isolated and reported as an error state.
+- Corrupt config → fall back to defaults with a warning, rather than failing entirely.
 
 ---
 
-## 16. Risiko Teknis & Mitigasi
+## 15. Testing Strategy
 
-| Risiko | Dampak | Mitigasi |
+- **Unit tests**: probe parsers, Docker/Traefik command assembly, reconnect backoff logic, secret encryption/decryption, Traefik label generation, cron expressions.
+- **Integration tests**: the SSH manager against a test Docker server (an SSHD container) — including a dropped-connection scenario to validate auto-reconnect.
+- **Editor tests**: buffer operations (`ropey`), Vim motions, highlighting.
+- **Security tests**: update checksum/signature verification is rejected when tampered; key-permission enforcement; log redaction.
+- **Cross-platform CI**: run tests on macOS, Linux, Windows.
+- **Release verification**: smoke-test the cross-compiled binary per target.
+
+---
+
+## 16. Technical Risks & Mitigations
+
+| Risk | Impact | Mitigation |
 |---|---|---|
-| Perbedaan perilaku terminal lintas OS (khususnya Windows) | UI rusak/inkonsisten | Andalkan `crossterm`; CI test per platform; hindari fitur terminal non-portabel |
-| Auto-reconnect menutupi masalah jaringan nyata | Pengguna bingung | Indikator status jelas + log koneksi yang dapat diinspeksi |
-| Kompleksitas mode Vim | Scope creep | Mulai dari subset motion/command umum, perluas bertahap |
-| Keamanan penyimpanan key di device lokal | Kompromi server | OS keychain + enkripsi at-rest + permission enforcement |
-| Instalasi Docker remote gagal di distro tak dikenal | Onboarding buntu | Deteksi OS + pesan fallback + dukungan skenario "sudah ada Docker" |
+| Cross-OS terminal behavior differences (especially Windows) | Broken/inconsistent UI | Rely on `crossterm`; per-platform CI tests; avoid non-portable terminal features |
+| Auto-reconnect hides real network problems | User confusion | Clear status indicators + inspectable connection logs |
+| Vim mode complexity | Scope creep | Start with a common motion/command subset, expand gradually |
+| Local key-storage security | Server compromise | OS keychain + at-rest encryption + permission enforcement |
+| Remote Docker install fails on an unknown distro | Onboarding stuck | OS detection + fallback message + support for the "Docker already present" scenario |
 
 ---
 
-## 17. Pertanyaan Teknis Terbuka
+## 17. Resolved Technical Decisions
 
-- Final pilihan library SSH: `russh` (pure-Rust) vs `ssh2` (libssh2).
-- `syntect` vs `tree-sitter` untuk highlighting (ukuran binary vs akurasi).
-- Mekanisme signature rilis: `minisign` vs `cosign`.
-- Apakah Linux musl static build dijadikan default untuk portabilitas maksimum.
+- **SSH library**: `russh` (pure-Rust) — no C dependency, simplifies static musl builds.
+- **Syntax highlighting**: custom line-based highlighter (see `highlight.rs`); `tree-sitter` remains a future option if richer parsing is needed.
+- **Release signature**: `minisign` (verified with `minisign-verify`).
+- **Linux static build**: musl is the default target for maximum portability.
