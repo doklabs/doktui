@@ -248,7 +248,8 @@ pub fn read_install_marker() -> InstallMethod {
     let Ok(content) = std::fs::read_to_string(path) else {
         return InstallMethod::Unknown;
     };
-    toml::from_str::<InstallMarker>(&content)
-        .map(|m| m.method)
-        .unwrap_or(InstallMethod::Unknown)
+    if let Ok(marker) = toml::from_str::<InstallMarker>(&content) {
+        return marker.method;
+    }
+    toml::from_str(&content).unwrap_or(InstallMethod::Unknown)
 }

@@ -138,6 +138,8 @@ deploy-hub-shortcut-containers = containers
 deploy-hub-shortcut-logs = logs
 deploy-hub-shortcut-secrets = secrets
 deploy-hub-shortcut-editor = editor
+deploy-hub-shortcut-nav = navigate
+deploy-hub-shortcut-open = open
 
 # Deploy form
 deploy-title = docker compose + traefik routing
@@ -249,7 +251,8 @@ editor-mode-vim = VIM
 editor-mode-normal = NORMAL
 editor-mode-insert = INSERT
 editor-mode-edit = EDIT
-editor-footer = Esc: normal · i: insert · :w save · :q quit
+editor-status-position = ln { $line }, col { $col }
+editor-status-modified = +
 
 # View panel titles
 logs-panel-title = Logs
