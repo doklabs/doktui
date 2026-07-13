@@ -24,7 +24,7 @@ Both are now fixed. This document explains the problem (grounded in code), how D
 
 Traefik was installed via a static compose:
 
-- Image `traefik:v3.3`, container `doktui-traefik`, ports 80/443.
+- Image `traefik:v3.7`, container `doktui-traefik`, ports 80/443.
 - Docker provider with `exposedbydefault=false`.
 - A single ACME resolver `le` (HTTP-01 challenge), with a **hardcoded** email `admin@example.com`.
 - A `traefik-certs` volume for `acme.json`.
@@ -109,7 +109,7 @@ pub fn traefik_compose(acme_email: &str) -> String {
     format!(
         r#"services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7
     container_name: doktui-traefik
     restart: unless-stopped
     networks:

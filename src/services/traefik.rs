@@ -61,7 +61,7 @@ pub fn traefik_compose(acme: &AcmeConfig) -> String {
     format!(
         r#"services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7
     container_name: {TRAEFIK_CONTAINER}
     restart: unless-stopped
     networks:
