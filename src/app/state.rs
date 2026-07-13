@@ -292,6 +292,7 @@ pub struct AppState {
     pub anim_tick: u64,
     pub click_regions: RefCell<Vec<ClickRegion>>,
     pub editor_visible_rows: Cell<usize>,
+    pub selected_deploy_menu: usize,
     pub mouse_pos: Option<(u16, u16)>,
     pub achievement: Option<String>,
 }
@@ -342,6 +343,7 @@ impl AppState {
             anim_tick: 0,
             click_regions: RefCell::new(Vec::new()),
             editor_visible_rows: Cell::new(20),
+            selected_deploy_menu: 0,
             mouse_pos: None,
             achievement: None,
             servers,
@@ -414,6 +416,9 @@ impl AppState {
         self.nav_section = section;
         self.screen = section.default_screen();
         self.sidebar_focused = false;
+        if section == NavSection::Deployments {
+            self.selected_deploy_menu = 0;
+        }
     }
 
     pub fn push_click(&self, rect: ratatui::layout::Rect, msg: Message) {

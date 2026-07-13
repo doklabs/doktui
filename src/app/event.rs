@@ -78,6 +78,8 @@ pub enum Message {
     ToggleCronJob(Uuid),
     CronNext,
     CronPrev,
+    DeployHubNext,
+    DeployHubPrev,
     CronFormNextField,
     CronFormPrevField,
     CronFormBackspace,
