@@ -1,0 +1,24 @@
+﻿use anyhow::{Context, Result, bail};
+
+use crate::config::AcmeChallenge;
+
+use super::ssh::SshSession;
+
+pub const NETWORK_NAME: &str = "doktui-network";
+const TRAEFIK_CONTAINER: &str = "doktui-traefik";
+const REMOTE_DIR: &str = "/opt/doktui/traefik";
+
+/// ACME / TLS configuration for Traefik static config.
+#[derive(Debug, Clone)]
+pub struct AcmeConfig {
+    pub email: String,
+    pub challenge: AcmeChallenge,
+    /// Cloudflare API token when using DNS-01.
+    pub dns_api_token: Option<String>,
+}
+
+/// Health of the Traefik installation on a remote server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraefikStatus {
+    /// Container not running.
+    NotRunning,
