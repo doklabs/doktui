@@ -224,9 +224,16 @@ pub fn bootstrap() -> Result<AppConfig> {
     AppConfig::load()
 }
 
+/// Wrapper so the install marker serializes as a valid TOML table (`method = "script"`).
+#[derive(Debug, Serialize, Deserialize)]
+struct InstallMarker {
+    method: InstallMethod,
+}
+
 pub fn write_install_marker(method: InstallMethod) -> Result<()> {
     let path = paths::install_marker_path()?;
-    let content = toml::to_string(&method)?;
+    let marker = InstallMarker { method };
+    let content = toml::to_string(&marker)?;
     std::fs::write(path, content)?;
     Ok(())
 }
@@ -241,5 +248,7 @@ pub fn read_install_marker() -> InstallMethod {
     let Ok(content) = std::fs::read_to_string(path) else {
         return InstallMethod::Unknown;
     };
-    toml::from_str(&content).unwrap_or(InstallMethod::Unknown)
+    toml::from_str::<InstallMarker>(&content)
+        .map(|m| m.method)
+        .unwrap_or(InstallMethod::Unknown)
 }
