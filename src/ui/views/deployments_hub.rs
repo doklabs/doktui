@@ -1,8 +1,17 @@
 use ratatui::Frame;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
-use crate::ui::theme::{header_line, panel_block, shortcut_line};
+use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
+
+const DEPLOY_MENU_ITEMS: [&str; 5] = [
+    "deploy-hub-item-deploy",
+    "deploy-hub-item-containers",
+    "deploy-hub-item-logs",
+    "deploy-hub-item-secrets",
+    "deploy-hub-item-editor",
+];
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -23,13 +32,23 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         },
     );
 
-    let items = vec![
-        ListItem::new(i18n.t("deploy-hub-item-deploy")),
-        ListItem::new(i18n.t("deploy-hub-item-containers")),
-        ListItem::new(i18n.t("deploy-hub-item-logs")),
-        ListItem::new(i18n.t("deploy-hub-item-secrets")),
-        ListItem::new(i18n.t("deploy-hub-item-editor")),
-    ];
+    let items: Vec<ListItem> = DEPLOY_MENU_ITEMS
+        .iter()
+        .enumerate()
+        .map(|(i, key)| {
+            let label = i18n.t(key);
+            let selected = i == state.selected_deploy_menu;
+            let prefix = if selected { "▸ " } else { "  " };
+            let style = if selected {
+                accent_style(theme)
+            } else {
+                muted_style(theme)
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{prefix}{label}"), style),
+            ]))
+        })
+        .collect();
 
     frame.render_widget(
         List::new(items),
@@ -60,11 +79,8 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("d", &i18n.t("deploy-hub-shortcut-deploy")),
-                ("c", &i18n.t("deploy-hub-shortcut-containers")),
-                ("l", &i18n.t("deploy-hub-shortcut-logs")),
-                ("v", &i18n.t("deploy-hub-shortcut-secrets")),
-                ("e", &i18n.t("deploy-hub-shortcut-editor")),
+                ("j/k", &i18n.t("deploy-hub-shortcut-nav")),
+                ("Enter", &i18n.t("deploy-hub-shortcut-open")),
             ],
         )),
         ratatui::layout::Rect {

@@ -206,7 +206,8 @@ impl TraefikProvisioner {
         if out.exit_code != 0 {
             return Ok(false);
         }
-        Ok(out.stdout.split('|').any(|n| n == NETWORK_NAME))
+        let attached = networks_from_inspect(&out.stdout).any(|n| n == NETWORK_NAME);
+        Ok(attached)
     }
 
     async fn has_network_provider(session: &mut SshSession) -> Result<bool> {
@@ -224,9 +225,31 @@ impl TraefikProvisioner {
     }
 }
 
+/// Parse network names from `docker inspect --format '{{range ...}}{{$k}}|{{end}}'`.
+/// SSH exec stdout always ends with `\n`; the template also leaves a trailing `|`.
+fn networks_from_inspect(stdout: &str) -> impl Iterator<Item = &str> {
+    stdout.split('|').map(str::trim).filter(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn networks_from_inspect_handles_trailing_newline() {
+        assert!(networks_from_inspect("doktui-network|\n").any(|n| n == NETWORK_NAME));
+    }
+
+    #[test]
+    fn networks_from_inspect_finds_network_among_many() {
+        let stdout = "bridge|doktui-network|\n";
+        assert!(networks_from_inspect(stdout).any(|n| n == NETWORK_NAME));
+    }
+
+    #[test]
+    fn networks_from_inspect_rejects_other_networks_only() {
+        assert!(!networks_from_inspect("bridge|\n").any(|n| n == NETWORK_NAME));
+    }
 
     #[test]
     fn dns_compose_includes_cloudflare_provider() {

@@ -270,18 +270,9 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                 _ => None,
             };
         }
-
-        if let KeyCode::Char(c) = key.code {
-            if let Some(section) = layout::section_from_char(c) {
-                return Some(Message::GoNav(section));
-            }
-        }
-        if matches!(key.code, KeyCode::Left | KeyCode::Char('h')) {
-            return Some(Message::ToggleSidebarFocus);
-        }
     }
 
-    match state.screen {
+    let screen_msg = match state.screen {
         Screen::Welcome => match key.code {
             code if is_enter(code) => Some(Message::GoAddServer),
             KeyCode::Char('c') => Some(Message::CopyPublicKey),
@@ -290,8 +281,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         },
         Screen::AddServer => match key.code {
             KeyCode::Esc => Some(Message::GoServerList),
-            KeyCode::Tab => Some(Message::FormNextField),
-            KeyCode::BackTab => Some(Message::FormPrevField),
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
             KeyCode::Backspace => Some(Message::FormBackspace),
             code if is_enter(code) => Some(Message::SubmitServerForm),
             KeyCode::Char(c) => Some(Message::FormChar(c)),
@@ -310,6 +301,9 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             _ => None,
         },
         Screen::DeploymentsHub => match key.code {
+            KeyCode::Down | KeyCode::Char('j') => Some(Message::DeployHubNext),
+            KeyCode::Up | KeyCode::Char('k') => Some(Message::DeployHubPrev),
+            code if is_enter(code) => deploy_hub_message(state.selected_deploy_menu),
             KeyCode::Char('d') => Some(Message::GoDeploy),
             KeyCode::Char('c') => Some(Message::GoContainers),
             KeyCode::Char('l') => Some(Message::GoLogs),
@@ -399,8 +393,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         Screen::Deploy => match key.code {
             KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
             KeyCode::Char('e') if state.deploy_form.active_field == 5 => Some(Message::GoEditor),
-            KeyCode::Tab => Some(Message::FormNextField),
-            KeyCode::BackTab => Some(Message::FormPrevField),
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
             KeyCode::Backspace => Some(Message::FormBackspace),
             KeyCode::Char(' ') if state.deploy_form.active_field == 4 => {
                 Some(Message::ToggleDeployHttps)
@@ -432,8 +426,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         },
         Screen::Secrets => match key.code {
             KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
-            KeyCode::Tab => Some(Message::FormNextField),
-            KeyCode::BackTab => Some(Message::FormPrevField),
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
             KeyCode::Backspace => Some(Message::FormBackspace),
             code if is_enter(code) => Some(Message::SubmitSecretForm),
             KeyCode::Char('d') if !state.secret_keys.is_empty() => {
@@ -450,6 +444,34 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             KeyCode::Char('n') | KeyCode::Esc => Some(Message::CancelDestructive),
             _ => None,
         },
+    };
+
+    if screen_msg.is_some() {
+        return screen_msg;
+    }
+
+    if state.screen.uses_app_shell() && !state.sidebar_focused {
+        if let KeyCode::Char(c) = key.code {
+            if let Some(section) = layout::section_from_char(c) {
+                return Some(Message::GoNav(section));
+            }
+        }
+        if matches!(key.code, KeyCode::Left | KeyCode::Char('h')) {
+            return Some(Message::ToggleSidebarFocus);
+        }
+    }
+
+    None
+}
+
+fn deploy_hub_message(index: usize) -> Option<Message> {
+    match index {
+        0 => Some(Message::GoDeploy),
+        1 => Some(Message::GoContainers),
+        2 => Some(Message::GoLogs),
+        3 => Some(Message::GoSecrets),
+        4 => Some(Message::GoEditor),
+        _ => None,
     }
 }
 
@@ -854,6 +876,12 @@ async fn update(
         }
         Message::CronPrev => {
             state.selected_cron = state.selected_cron.saturating_sub(1);
+        }
+        Message::DeployHubNext => {
+            state.selected_deploy_menu = (state.selected_deploy_menu + 1).min(4);
+        }
+        Message::DeployHubPrev => {
+            state.selected_deploy_menu = state.selected_deploy_menu.saturating_sub(1);
         }
         Message::CronFormNextField => {
             if let Some(form) = &mut state.cron_form {
@@ -1336,4 +1364,56 @@ fn push_error(state: &mut AppState, detail: String) {
     state.error_detail = Some(detail);
     state.error_panel_open = false;
     state.error_scroll = 0;
+}
+
+#[cfg(test)]
+mod map_key_tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::config::{EditorMode, ServerConfig, UiMode as ConfigUiMode};
+    use crate::i18n::I18n;
+
+    use super::*;
+    use crate::app::state::{AppState, NavSection, Screen};
+
+    fn test_state(screen: Screen) -> AppState {
+        let i18n = I18n::load("en").unwrap();
+        let theme = crate::ui::theme::ThemeRegistry::active("pico8");
+        let mut state = AppState::new(
+            vec![ServerConfig::new(
+                "srv-a".into(),
+                "10.0.0.1".into(),
+                22,
+                "root".into(),
+            )],
+            true,
+            String::new(),
+            String::new(),
+            EditorMode::Normal,
+            ConfigUiMode::Overlay,
+            vec![],
+            theme,
+            i18n,
+            22,
+        );
+        state.screen = screen;
+        state.sidebar_focused = false;
+        state
+    }
+
+    #[test]
+    fn server_list_digit_selects_server_not_sidebar() {
+        let state = test_state(Screen::ServerList);
+        let key = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::empty());
+        let msg = map_key(key, &state);
+        assert!(matches!(msg, Some(Message::SelectServer(_))));
+    }
+
+    #[test]
+    fn home_digit_falls_back_to_sidebar_nav() {
+        let state = test_state(Screen::Home);
+        let key = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::empty());
+        let msg = map_key(key, &state);
+        assert!(matches!(msg, Some(Message::GoNav(NavSection::Deployments))));
+    }
 }
