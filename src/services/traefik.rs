@@ -141,19 +141,15 @@ impl TraefikProvisioner {
     }
 
     pub async fn install(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
-        Self::write_compose_and_up(session, acme, false).await
+        Self::write_compose_and_up(session, acme).await
     }
 
     /// Recreate Traefik with the current doktui-network configuration.
     pub async fn migrate(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
-        Self::write_compose_and_up(session, acme, true).await
+        Self::write_compose_and_up(session, acme).await
     }
 
-    async fn write_compose_and_up(
-        session: &mut SshSession,
-        acme: &AcmeConfig,
-        force_recreate: bool,
-    ) -> Result<()> {
+    async fn write_compose_and_up(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
         if acme.challenge == AcmeChallenge::DnsCloudflare && acme.dns_api_token.as_deref().unwrap_or("").is_empty() {
             bail!(
                 "DNS-01 (Cloudflare) requires CF_DNS_API_TOKEN in Secrets — add it under Deployments → Secrets"
@@ -177,23 +173,61 @@ impl TraefikProvisioner {
                 .await?;
         }
 
-        let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
+        // Drop any stopped legacy container so compose cannot resurrect old config.
+        let _ = session
+            .exec(&format!("docker rm -f {TRAEFIK_CONTAINER} 2>/dev/null || true"))
+            .await;
+
         let up = session
             .exec(&format!(
-                "cd {REMOTE_DIR} && docker compose up -d{recreate_flag}"
+                "cd {REMOTE_DIR} && docker compose up -d --force-recreate"
             ))
             .await
             .context("failed to start Traefik")?;
         if up.exit_code != 0 {
-            bail!("Traefik start failed: {}", up.stderr);
+            bail!("Traefik start failed: {}", up.stderr.trim());
         }
 
-        match Self::status(session).await? {
+        match Self::wait_for_healthy(session).await? {
             TraefikStatus::Healthy => Ok(()),
-            TraefikStatus::Legacy => bail!(
-                "Traefik started but is not attached to {NETWORK_NAME} — check docker logs {TRAEFIK_CONTAINER}"
-            ),
+            TraefikStatus::Legacy => {
+                let detail = Self::legacy_detail(session).await;
+                bail!(
+                    "Traefik is running but not healthy ({detail}) — check docker logs {TRAEFIK_CONTAINER}"
+                );
+            }
             TraefikStatus::NotRunning => bail!("Traefik container failed to start"),
+        }
+    }
+
+    /// Poll status briefly — network attach and container Cmd can lag `compose up`.
+    async fn wait_for_healthy(session: &mut SshSession) -> Result<TraefikStatus> {
+        use std::time::Duration;
+
+        const ATTEMPTS: u32 = 5;
+        let mut last = TraefikStatus::NotRunning;
+        for attempt in 0..ATTEMPTS {
+            last = Self::status(session).await?;
+            if last == TraefikStatus::Healthy {
+                return Ok(last);
+            }
+            if attempt + 1 < ATTEMPTS {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+        Ok(last)
+    }
+
+    async fn legacy_detail(session: &mut SshSession) -> String {
+        let on_network = Self::on_shared_network(session).await.unwrap_or(false);
+        let provider_ok = Self::has_network_provider(session).await.unwrap_or(false);
+        match (on_network, provider_ok) {
+            (false, false) => format!(
+                "not on {NETWORK_NAME} and missing providers.docker.network={NETWORK_NAME}"
+            ),
+            (false, true) => format!("not attached to {NETWORK_NAME}"),
+            (true, false) => format!("missing providers.docker.network={NETWORK_NAME} in Cmd"),
+            (true, true) => "unexpected legacy state".into(),
         }
     }
 
@@ -219,10 +253,14 @@ impl TraefikProvisioner {
         if out.exit_code != 0 {
             return Ok(false);
         }
-        Ok(out
-            .stdout
-            .contains(&format!("providers.docker.network={NETWORK_NAME}")))
+        Ok(cmd_has_network_provider(&out.stdout))
     }
+}
+
+fn cmd_has_network_provider(stdout: &str) -> bool {
+    stdout
+        .trim()
+        .contains(&format!("providers.docker.network={NETWORK_NAME}"))
 }
 
 /// Parse network names from `docker inspect --format '{{range ...}}{{$k}}|{{end}}'`.
@@ -249,6 +287,17 @@ mod tests {
     #[test]
     fn networks_from_inspect_rejects_other_networks_only() {
         assert!(!networks_from_inspect("bridge|\n").any(|n| n == NETWORK_NAME));
+    }
+
+    #[test]
+    fn cmd_has_network_provider_matches_flag() {
+        let stdout = "--providers.docker=true|--providers.docker.network=doktui-network|\n";
+        assert!(cmd_has_network_provider(stdout));
+    }
+
+    #[test]
+    fn cmd_has_network_provider_rejects_missing_flag() {
+        assert!(!cmd_has_network_provider("--providers.docker=true|\n"));
     }
 
     #[test]
