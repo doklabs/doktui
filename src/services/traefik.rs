@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+﻿use anyhow::{Context, Result, bail};
 
 use crate::config::AcmeChallenge;
 
@@ -41,7 +41,7 @@ fn acme_challenge_lines(challenge: AcmeChallenge) -> Vec<&'static str> {
     }
 }
 
-/// Build Traefik compose with configurable ACME email, challenge, HTTP→HTTPS redirect, and shared network.
+/// Build Traefik compose with configurable ACME email, challenge, HTTPΓåÆHTTPS redirect, and shared network.
 pub fn traefik_compose(acme: &AcmeConfig) -> String {
     let challenge_lines = acme_challenge_lines(acme.challenge);
     let challenge_block = challenge_lines
@@ -152,7 +152,7 @@ impl TraefikProvisioner {
     async fn write_compose_and_up(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
         if acme.challenge == AcmeChallenge::DnsCloudflare && acme.dns_api_token.as_deref().unwrap_or("").is_empty() {
             bail!(
-                "DNS-01 (Cloudflare) requires CF_DNS_API_TOKEN in Secrets — add it under Deployments → Secrets"
+                "DNS-01 (Cloudflare) requires CF_DNS_API_TOKEN in Secrets ΓÇö add it under Deployments ΓåÆ Secrets"
             );
         }
 
@@ -188,9 +188,16 @@ impl TraefikProvisioner {
             bail!("Traefik start failed: {}", up.stderr.trim());
         }
 
+        Self::ensure_container_on_network(session).await?;
+
         match Self::wait_for_healthy(session).await? {
             TraefikStatus::Healthy => Ok(()),
             TraefikStatus::Legacy => {
+                // Repair once — common after `docker system prune` removed doktui-network.
+                Self::ensure_container_on_network(session).await?;
+                if Self::wait_for_healthy(session).await? == TraefikStatus::Healthy {
+                    return Ok(());
+                }
                 let detail = Self::legacy_detail(session).await;
                 bail!(
                     "Traefik is running but not healthy ({detail}) — check docker logs {TRAEFIK_CONTAINER}"
@@ -200,7 +207,31 @@ impl TraefikProvisioner {
         }
     }
 
-    /// Poll status briefly — network attach and container Cmd can lag `compose up`.
+    /// Ensure doktui-network exists and Traefik is attached (compose external networks can miss after prune).
+    async fn ensure_container_on_network(session: &mut SshSession) -> Result<()> {
+        if Self::on_shared_network(session).await? {
+            return Ok(());
+        }
+        ensure_network(session).await?;
+        let out = session
+            .exec(&format!(
+                "docker network connect {NETWORK_NAME} {TRAEFIK_CONTAINER}"
+            ))
+            .await?;
+        if out.exit_code != 0 {
+            let err = out.stderr.trim();
+            if Self::on_shared_network(session).await? {
+                return Ok(());
+            }
+            if err.contains("already exists") {
+                return Ok(());
+            }
+            bail!("failed to attach {TRAEFIK_CONTAINER} to {NETWORK_NAME}: {err}");
+        }
+        Ok(())
+    }
+
+    /// Poll status briefly ΓÇö network attach and container Cmd can lag `compose up`.
     async fn wait_for_healthy(session: &mut SshSession) -> Result<TraefikStatus> {
         use std::time::Duration;
 
@@ -221,20 +252,39 @@ impl TraefikProvisioner {
     async fn legacy_detail(session: &mut SshSession) -> String {
         let on_network = Self::on_shared_network(session).await.unwrap_or(false);
         let provider_ok = Self::has_network_provider(session).await.unwrap_or(false);
+        let nets = Self::list_attached_networks(session)
+            .await
+            .join(", ");
+        let nets = if nets.is_empty() { "none".into() } else { nets };
         match (on_network, provider_ok) {
             (false, false) => format!(
-                "not on {NETWORK_NAME} and missing providers.docker.network={NETWORK_NAME}"
+                "not on {NETWORK_NAME} (networks: {nets}) and missing providers.docker.network={NETWORK_NAME}"
             ),
-            (false, true) => format!("not attached to {NETWORK_NAME}"),
+            (false, true) => format!("not attached to {NETWORK_NAME} (networks: {nets})"),
             (true, false) => format!("missing providers.docker.network={NETWORK_NAME} in Cmd"),
             (true, true) => "unexpected legacy state".into(),
+        }
+    }
+
+    async fn list_attached_networks(session: &mut SshSession) -> Vec<String> {
+        let out = session
+            .exec(&format!(
+                "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{{{$k}}}}|{{{{end}}}}'"
+            ))
+            .await
+            .ok();
+        match out {
+            Some(o) if o.exit_code == 0 => networks_from_inspect(&o.stdout)
+                .map(str::to_string)
+                .collect(),
+            _ => Vec::new(),
         }
     }
 
     async fn on_shared_network(session: &mut SshSession) -> Result<bool> {
         let out = session
             .exec(&format!(
-                "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{$k}}|{{{{end}}}}'"
+                "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{{{$k}}}}|{{{{end}}}}'"
             ))
             .await?;
         if out.exit_code != 0 {
@@ -272,6 +322,17 @@ fn networks_from_inspect(stdout: &str) -> impl Iterator<Item = &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_inspect_format_escapes_go_template() {
+        let cmd = format!(
+            "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{{{$k}}}}|{{{{end}}}}'"
+        );
+        assert_eq!(
+            cmd,
+            "docker inspect doktui-traefik --format '{{range $k, $_ := .NetworkSettings.Networks}}{{$k}}|{{end}}'"
+        );
+    }
 
     #[test]
     fn networks_from_inspect_handles_trailing_newline() {
