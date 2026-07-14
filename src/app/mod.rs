@@ -23,10 +23,10 @@ use crate::services::secrets::SecretsManager;
 use crate::ui::{self, layout};
 
 use self::command::{save_new_server, CommandBus};
-use self::event::Message;
+use self::event::{GitHubDeployRequest, Message};
 use self::state::{
-    clamp_sidebar_width, hit, AppState, CronActionKind, CronForm, DeployForm, HostKeyAfterAction,
-    NavSection, Screen, ServerForm, UiMode,
+    clamp_sidebar_width, hit, AppState, CronActionKind, CronForm, DeployForm, DeployMode,
+    HostKeyAfterAction, NavSection, Screen, ServerForm, UiMode,
 };
 
 pub mod command;
@@ -73,6 +73,7 @@ pub async fn run_tui(theme_override: Option<String>) -> Result<()> {
             cfg.editor_mode.clone(),
             cfg.ui_mode.clone(),
             cfg.cron_jobs.clone(),
+            cfg.apps.clone(),
             theme,
             i18n.clone(),
             sidebar_width,
@@ -176,7 +177,8 @@ fn spawns_background(msg: &Message) -> bool {
             | Message::StopContainer { .. }
             | Message::RestartContainer { .. }
             | Message::RemoveContainer { .. }
-            | Message::SubmitDeploy { .. }
+            | Message::RedeployApp(_)
+            | Message::LoadGitHubRepos
             | Message::RunCronJob(_)
             | Message::SubmitSecretForm
             | Message::DeleteSecret(_)
@@ -251,7 +253,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         if key.code == KeyCode::Tab {
             return Some(Message::ToggleSidebarFocus);
         }
-        if key.code == KeyCode::Char('m') {
+        if key.code == KeyCode::Char('m') && state.screen != Screen::Deploy {
             return Some(Message::ToggleUiMode);
         }
 
@@ -303,10 +305,23 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             KeyCode::Up | KeyCode::Char('k') => Some(Message::DeployHubPrev),
             code if is_enter(code) => deploy_hub_message(state.selected_deploy_menu),
             KeyCode::Char('d') => Some(Message::GoDeploy),
+            KeyCode::Char('a') => Some(Message::GoApps),
             KeyCode::Char('c') => Some(Message::GoContainers),
             KeyCode::Char('l') => Some(Message::GoLogs),
-            KeyCode::Char('v') => Some(Message::GoSecrets),
+            KeyCode::Char('v') | KeyCode::Char('s') => Some(Message::GoSecrets),
             KeyCode::Char('e') => Some(Message::GoEditor),
+            KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
+            _ => None,
+        },
+        Screen::Apps => match key.code {
+            KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
+            KeyCode::Down | KeyCode::Char('j') => Some(Message::AppsNext),
+            KeyCode::Up | KeyCode::Char('k') => Some(Message::AppsPrev),
+            code if is_enter(code) => state.apps.get(state.selected_app).map(|a| {
+                Message::RedeployApp(a.id)
+            }),
+            KeyCode::Char('x') => state.apps.get(state.selected_app).map(|a| Message::DeleteApp(a.id)),
+            KeyCode::Char('d') => Some(Message::GoDeploy),
             KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
             _ => None,
         },
@@ -400,40 +415,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
             _ => None,
         },
-        Screen::Deploy => match key.code {
-            KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
-            KeyCode::Char('e') if state.deploy_form.active_field == 5 => Some(Message::GoEditor),
-            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
-            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
-            KeyCode::Backspace => Some(Message::FormBackspace),
-            KeyCode::Char(' ') if state.deploy_form.active_field == 4 => {
-                Some(Message::ToggleDeployHttps)
-            }
-            KeyCode::Enter if state.deploy_form.active_field < 5 => Some(Message::FormNextField),
-            KeyCode::Enter => {
-                if let Some(id) = state
-                    .selected_server
-                    .or_else(|| state.servers.first().map(|s| s.id))
-                {
-                    let routing = deploy_routing_from_form(&state.deploy_form);
-                    if let Some(ref spec) = routing {
-                        if let Err(e) = routing::validate_domain_spec(spec) {
-                            return Some(Message::SetError(e.to_string()));
-                        }
-                    }
-                    Some(Message::SubmitDeploy {
-                        server_id: id,
-                        remote_dir: state.deploy_form.remote_dir.clone(),
-                        compose: state.deploy_form.compose.clone(),
-                        routing,
-                    })
-                } else {
-                    Some(Message::SetError(state.i18n.t("error-add-server-first")))
-                }
-            }
-            KeyCode::Char(c) if state.deploy_form.active_field != 4 => Some(Message::FormChar(c)),
-            _ => None,
-        },
+        Screen::Deploy => map_deploy_key(key.code, state),
         Screen::Secrets => match key.code {
             KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
             KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
@@ -480,12 +462,110 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
 fn deploy_hub_message(index: usize) -> Option<Message> {
     match index {
         0 => Some(Message::GoDeploy),
-        1 => Some(Message::GoContainers),
-        2 => Some(Message::GoLogs),
-        3 => Some(Message::GoSecrets),
-        4 => Some(Message::GoEditor),
+        1 => Some(Message::GoApps),
+        2 => Some(Message::GoContainers),
+        3 => Some(Message::GoLogs),
+        4 => Some(Message::GoSecrets),
+        5 => Some(Message::GoEditor),
         _ => None,
     }
+}
+
+fn map_deploy_key(code: KeyCode, state: &AppState) -> Option<Message> {
+    let form = &state.deploy_form;
+    let max_field = form.field_count().saturating_sub(1);
+    let gh_pick = form.mode == DeployMode::GitHub && matches!(form.active_field, 1 | 2);
+
+    match code {
+        KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
+        KeyCode::Char('m') => Some(Message::ToggleDeployMode),
+        KeyCode::Char('r') if form.mode == DeployMode::GitHub => Some(Message::LoadGitHubRepos),
+        KeyCode::Char('e') if form.mode == DeployMode::Compose && form.active_field == 5 => {
+            Some(Message::GoEditor)
+        }
+        KeyCode::Tab | KeyCode::Down => Some(Message::FormNextField),
+        KeyCode::BackTab | KeyCode::Up => Some(Message::FormPrevField),
+        KeyCode::Backspace => Some(Message::FormBackspace),
+        KeyCode::Char(' ')
+            if (form.mode == DeployMode::Compose && form.active_field == 4)
+                || (form.mode == DeployMode::GitHub && form.active_field == 8) =>
+        {
+            Some(Message::ToggleDeployHttps)
+        }
+        KeyCode::Char(' ') if form.mode == DeployMode::GitHub && form.active_field == 9 => {
+            Some(Message::ToggleDeployAuto)
+        }
+        KeyCode::Enter if form.active_field < max_field => Some(Message::FormNextField),
+        KeyCode::Enter => build_submit_deploy(state),
+        KeyCode::Char('j') if gh_pick => Some(Message::FormChar(']')),
+        KeyCode::Char('k') if gh_pick => Some(Message::FormChar('[')),
+        KeyCode::Char('j') => Some(Message::FormNextField),
+        KeyCode::Char('k') => Some(Message::FormPrevField),
+        KeyCode::Char(c)
+            if !(form.mode == DeployMode::Compose && form.active_field == 4)
+                && !(form.mode == DeployMode::GitHub && matches!(form.active_field, 8 | 9)) =>
+        {
+            Some(Message::FormChar(c))
+        }
+        _ => None,
+    }
+}
+
+fn build_submit_deploy(state: &AppState) -> Option<Message> {
+    let form = &state.deploy_form;
+    let Some(id) = state
+        .selected_server
+        .or_else(|| state.servers.first().map(|s| s.id))
+    else {
+        return Some(Message::SetError(state.i18n.t("error-add-server-first")));
+    };
+    let routing = deploy_routing_from_form(form);
+    if let Some(ref spec) = routing {
+        if let Err(e) = routing::validate_domain_spec(spec) {
+            return Some(Message::SetError(e.to_string()));
+        }
+    }
+    let github = if form.mode == DeployMode::GitHub {
+        let (owner, repo) = if form.gh_owner.contains('/') {
+            let (o, r) = form.gh_owner.split_once('/').unwrap();
+            (o.trim().to_string(), r.trim().to_string())
+        } else {
+            (
+                form.gh_owner.trim().to_string(),
+                form.gh_repo.trim().to_string(),
+            )
+        };
+        if owner.is_empty() || repo.is_empty() {
+            return Some(Message::SetError(
+                state.i18n.t("error-github-repo-required"),
+            ));
+        }
+        Some(GitHubDeployRequest {
+            owner,
+            repo,
+            branch: if form.gh_branch.trim().is_empty() {
+                "main".into()
+            } else {
+                form.gh_branch.trim().to_string()
+            },
+            compose_path: if form.gh_compose_path.trim().is_empty() {
+                "docker-compose.yml".into()
+            } else {
+                form.gh_compose_path.trim().to_string()
+            },
+        })
+    } else {
+        None
+    };
+    Some(Message::SubmitDeploy {
+        server_id: id,
+        remote_dir: form.remote_dir.clone(),
+        compose: form.compose.clone(),
+        routing,
+        github,
+        app_name: form.app_name.clone(),
+        auto_deploy: form.auto_deploy,
+    })
 }
 
 fn apply_sidebar_drag(state: &mut AppState, column: u16) {
@@ -602,6 +682,21 @@ async fn update(
                 };
                 for id in due {
                     bus.dispatch(Message::RunCronJob(id));
+                }
+            }
+            // Auto-deploy poll (~60s) for GitHub apps while DokTUI is open.
+            state.auto_deploy_poll_counter = state.auto_deploy_poll_counter.saturating_add(1);
+            if state.auto_deploy_poll_counter >= 60 && !state.deploying {
+                state.auto_deploy_poll_counter = 0;
+                let due = bus.poll_auto_deploy_candidates().await;
+                for id in due {
+                    if !state.deploying {
+                        state.loading = true;
+                        state.deploying = true;
+                        state.status_message =
+                            Some(state.i18n.t("status-auto-deploy"));
+                        bus.dispatch(Message::RedeployApp(id));
+                    }
                 }
             }
         }
@@ -747,6 +842,83 @@ async fn update(
             if state.selected_server.is_none() {
                 state.selected_server = state.servers.first().map(|s| s.id);
             }
+        }
+        Message::GoApps => {
+            state.nav_section = NavSection::Deployments;
+            state.screen = Screen::Apps;
+            if state.selected_app >= state.apps.len() {
+                state.selected_app = state.apps.len().saturating_sub(1);
+            }
+        }
+        Message::AppsNext => {
+            if !state.apps.is_empty() {
+                state.selected_app = (state.selected_app + 1).min(state.apps.len() - 1);
+            }
+        }
+        Message::AppsPrev => {
+            state.selected_app = state.selected_app.saturating_sub(1);
+        }
+        Message::DeleteApp(id) => {
+            state.apps.retain(|a| a.id != id);
+            let mut cfg = config.lock().await;
+            cfg.apps.retain(|a| a.id != id);
+            let _ = cfg.save();
+            if state.selected_app >= state.apps.len() {
+                state.selected_app = state.apps.len().saturating_sub(1);
+            }
+            state.status_message = Some(state.i18n.t("status-app-removed"));
+        }
+        Message::AppUpserted(app) => {
+            if let Some(existing) = state.apps.iter_mut().find(|a| a.id == app.id) {
+                *existing = app;
+            } else {
+                state.apps.push(app);
+            }
+        }
+        Message::ToggleDeployMode => {
+            state.deploy_form.mode = match state.deploy_form.mode {
+                DeployMode::Compose => DeployMode::GitHub,
+                DeployMode::GitHub => DeployMode::Compose,
+            };
+            state.deploy_form.active_field = 0;
+        }
+        Message::ToggleDeployAuto => {
+            state.deploy_form.auto_deploy = !state.deploy_form.auto_deploy;
+        }
+        Message::LoadGitHubRepos => {
+            state.status_message = Some(state.i18n.t("status-loading-github"));
+        }
+        Message::GitHubReposLoaded(result) => match result {
+            Ok(repos) => {
+                state.deploy_form.github_repos = repos;
+                state.deploy_form.selected_repo = 0;
+                state.deploy_form.apply_selected_repo();
+                state.status_message = Some(state.i18n.t("status-github-repos-loaded"));
+                if !state.deploy_form.gh_owner.is_empty() {
+                    bus.load_github_branches(
+                        state.deploy_form.gh_owner.clone(),
+                        state.deploy_form.gh_repo.clone(),
+                    );
+                }
+            }
+            Err(e) => push_error(state, e),
+        },
+        Message::GitHubBranchesLoaded(result) => match result {
+            Ok(branches) => {
+                state.deploy_form.github_branches = branches;
+                state.deploy_form.selected_branch = state
+                    .deploy_form
+                    .github_branches
+                    .iter()
+                    .position(|b| b == &state.deploy_form.gh_branch)
+                    .unwrap_or(0);
+                state.deploy_form.apply_selected_branch();
+            }
+            Err(e) => push_error(state, e),
+        },
+        Message::RedeployApp(_) => {
+            state.loading = true;
+            state.deploying = true;
         }
         Message::GoEditor => {
             let content = state.deploy_form.compose.clone();
@@ -937,7 +1109,7 @@ async fn update(
             state.selected_cron = state.selected_cron.saturating_sub(1);
         }
         Message::DeployHubNext => {
-            state.selected_deploy_menu = (state.selected_deploy_menu + 1).min(4);
+            state.selected_deploy_menu = (state.selected_deploy_menu + 1).min(5);
         }
         Message::DeployHubPrev => {
             state.selected_deploy_menu = state.selected_deploy_menu.saturating_sub(1);
@@ -1080,6 +1252,9 @@ async fn update(
             remote_dir,
             compose,
             routing,
+            github,
+            app_name,
+            auto_deploy,
         } => {
             if let Some(ref spec) = routing {
                 if spec.is_wildcard() {
@@ -1090,9 +1265,23 @@ async fn update(
                     }
                 }
             }
+            if let Some(ref gh) = github {
+                if gh.owner.is_empty() || gh.repo.is_empty() {
+                    push_error(state, state.i18n.t("error-github-repo-required"));
+                    return;
+                }
+            }
             state.loading = true;
             state.deploying = true;
-            bus.deploy(server_id, remote_dir, compose, routing);
+            bus.dispatch(Message::SubmitDeploy {
+                server_id,
+                remote_dir,
+                compose,
+                routing,
+                github,
+                app_name,
+                auto_deploy,
+            });
         }
         Message::ToggleDeployHttps => {
             state.deploy_form.https = !state.deploy_form.https;
@@ -1301,23 +1490,56 @@ fn edit_backspace(state: &mut AppState) {
         }
         Screen::Deploy => {
             let field = &mut state.deploy_form;
-            match field.active_field {
-                0 => {
-                    field.remote_dir.pop();
-                }
-                1 => {
-                    field.domain.pop();
-                }
-                2 => {
-                    field.port.pop();
-                }
-                3 => {
-                    field.service.pop();
-                }
-                5 => {
-                    field.compose.pop();
-                }
-                _ => {}
+            match field.mode {
+                DeployMode::Compose => match field.active_field {
+                    0 => {
+                        field.remote_dir.pop();
+                    }
+                    1 => {
+                        field.domain.pop();
+                    }
+                    2 => {
+                        field.port.pop();
+                    }
+                    3 => {
+                        field.service.pop();
+                    }
+                    5 => {
+                        field.compose.pop();
+                    }
+                    _ => {}
+                },
+                DeployMode::GitHub => match field.active_field {
+                    0 => {
+                        field.remote_dir.pop();
+                    }
+                    1 => {
+                        if !field.gh_repo.is_empty() {
+                            field.gh_repo.pop();
+                        } else {
+                            field.gh_owner.pop();
+                        }
+                    }
+                    2 => {
+                        field.gh_branch.pop();
+                    }
+                    3 => {
+                        field.gh_compose_path.pop();
+                    }
+                    4 => {
+                        field.app_name.pop();
+                    }
+                    5 => {
+                        field.domain.pop();
+                    }
+                    6 => {
+                        field.port.pop();
+                    }
+                    7 => {
+                        field.service.pop();
+                    }
+                    _ => {}
+                },
             }
         }
         Screen::Secrets => {
@@ -1350,13 +1572,61 @@ fn edit_char(state: &mut AppState, c: char) {
         }
         Screen::Deploy => {
             let field = &mut state.deploy_form;
-            match field.active_field {
-                0 => field.remote_dir.push(c),
-                1 => field.domain.push(c),
-                2 if c.is_ascii_digit() => field.port.push(c),
-                3 => field.service.push(c),
-                5 => field.compose.push(c),
-                _ => {}
+            match field.mode {
+                DeployMode::Compose => match field.active_field {
+                    0 => field.remote_dir.push(c),
+                    1 => field.domain.push(c),
+                    2 if c.is_ascii_digit() => field.port.push(c),
+                    3 => field.service.push(c),
+                    5 => field.compose.push(c),
+                    _ => {}
+                },
+                DeployMode::GitHub => match field.active_field {
+                    0 => field.remote_dir.push(c),
+                    1 if c == ']' && !field.github_repos.is_empty() => {
+                        field.selected_repo =
+                            (field.selected_repo + 1) % field.github_repos.len();
+                        field.apply_selected_repo();
+                    }
+                    1 if c == '[' && !field.github_repos.is_empty() => {
+                        field.selected_repo = field
+                            .selected_repo
+                            .checked_sub(1)
+                            .unwrap_or(field.github_repos.len() - 1);
+                        field.apply_selected_repo();
+                    }
+                    1 if c != '[' && c != ']' && field.github_repos.is_empty() => {
+                        // Free-type `owner/repo` into owner; split on submit.
+                        if field.gh_repo.is_empty() {
+                            field.gh_owner.push(c);
+                            if let Some((o, r)) = field.gh_owner.clone().split_once('/') {
+                                field.gh_owner = o.to_string();
+                                field.gh_repo = r.to_string();
+                            }
+                        } else {
+                            field.gh_repo.push(c);
+                        }
+                    }
+                    2 if c == ']' && !field.github_branches.is_empty() => {
+                        field.selected_branch =
+                            (field.selected_branch + 1) % field.github_branches.len();
+                        field.apply_selected_branch();
+                    }
+                    2 if c == '[' && !field.github_branches.is_empty() => {
+                        field.selected_branch = field
+                            .selected_branch
+                            .checked_sub(1)
+                            .unwrap_or(field.github_branches.len() - 1);
+                        field.apply_selected_branch();
+                    }
+                    2 if c != '[' && c != ']' => field.gh_branch.push(c),
+                    3 => field.gh_compose_path.push(c),
+                    4 => field.app_name.push(c),
+                    5 => field.domain.push(c),
+                    6 if c.is_ascii_digit() => field.port.push(c),
+                    7 => field.service.push(c),
+                    _ => {}
+                },
             }
         }
         Screen::Secrets => {
@@ -1376,7 +1646,8 @@ fn edit_next_field(state: &mut AppState) {
             state.server_form.active_field = (state.server_form.active_field + 1).min(4);
         }
         Screen::Deploy => {
-            state.deploy_form.active_field = (state.deploy_form.active_field + 1).min(5);
+            let max = state.deploy_form.field_count().saturating_sub(1);
+            state.deploy_form.active_field = (state.deploy_form.active_field + 1).min(max);
         }
         Screen::Secrets => {
             state.secret_form.active_field = (state.secret_form.active_field + 1).min(1);
@@ -1484,6 +1755,7 @@ mod map_key_tests {
             String::new(),
             EditorMode::Normal,
             ConfigUiMode::Overlay,
+            vec![],
             vec![],
             theme,
             i18n,

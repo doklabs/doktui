@@ -130,7 +130,8 @@ servers-shortcut-back = back
 deploy-hub-title = deploy & runtime
 deploy-hub-target = Target: { $name }
 deploy-hub-no-target = Target: (none — pick server in Projects)
-deploy-hub-item-deploy = [d] Deploy — docker compose to server
+deploy-hub-item-deploy = [d] Deploy — compose or GitHub repo
+deploy-hub-item-apps = [a] Apps — saved deployments / redeploy
 deploy-hub-item-containers = [c] Containers — start/stop/restart
 deploy-hub-item-logs = [l] Logs — stream container output
 deploy-hub-item-secrets = [s] Secrets — env vars (encrypted locally)
@@ -145,20 +146,45 @@ deploy-hub-shortcut-open = open
 
 # Deploy form
 deploy-title = docker compose + traefik routing
+deploy-title-mode = deploy · { $mode }
+deploy-mode-compose = Compose paste
+deploy-mode-github = GitHub
+deploy-mode-hint = Press m to switch Compose ↔ GitHub. For GitHub: add GITHUB_TOKEN in Secrets, then r to load repos.
 deploy-field-remote-dir = Remote dir
 deploy-field-domain = Domain (or *.example.com)
 deploy-field-port = Port
 deploy-field-service = Service
 deploy-field-https = HTTPS (Let's Encrypt)
 deploy-field-compose = Compose
+deploy-field-repo = Repo (j/k or type owner/repo)
+deploy-field-branch = Branch
+deploy-field-compose-path = Compose path
+deploy-field-app-name = App name
+deploy-field-auto-deploy = Auto-deploy (poll while open)
+deploy-gh-no-repos = (press r to load repos, or type owner/repo)
 deploy-on = on
 deploy-off = off
 deploy-compose-editing = (editing — press e for canvas editor)
 deploy-compose-lines = { $count } lines
 deploy-shortcut-tab = field
-deploy-shortcut-https = toggle HTTPS
+deploy-shortcut-https = toggle HTTPS / auto
 deploy-shortcut-deploy = deploy
 deploy-shortcut-editor = editor
+deploy-shortcut-mode = mode
+deploy-shortcut-refresh = load repos
+
+# Apps list
+apps-panel-title = Apps
+apps-title = saved deployments
+apps-poll-hint = Auto-deploy polls GitHub ~every 60s while DokTUI is open (not a 24/7 webhook).
+apps-empty = no apps yet — Deploy from GitHub or Compose to create one
+apps-source-compose = compose
+apps-auto-on = auto
+apps-auto-off = manual
+apps-shortcut-nav = select
+apps-shortcut-redeploy = redeploy
+apps-shortcut-delete = delete
+apps-shortcut-deploy = new deploy
 
 # Containers
 containers-title = docker ps
@@ -228,7 +254,7 @@ schedules-status-off = off
 
 # Secrets
 secrets-title = encrypted local store
-secrets-empty = no secrets yet — add one below
+secrets-empty = no secrets yet — add one below (use GITHUB_TOKEN for GitHub deploys)
 secrets-key = Key:
 secrets-value = Value:
 secrets-shortcut-tab = field
@@ -273,9 +299,14 @@ status-cron-deleted = cron job deleted
 status-server-removed = Server '{ $name }' removed
 status-connecting = connecting…
 status-deploy-warnings = deploy completed with warnings
+status-loading-github = loading GitHub repositories…
+status-github-repos-loaded = GitHub repositories loaded
+status-app-removed = app removed
+status-auto-deploy = new commit detected — redeploying…
 achievement-first-https = First HTTPS Deploy
 
 # App errors
+error-github-repo-required = GitHub owner and repo are required
 error-clipboard = clipboard copy failed: { $err }
 error-select-server = select a server under Projects first
 error-name-host-required = name and host are required

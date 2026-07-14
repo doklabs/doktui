@@ -40,7 +40,8 @@ DokTUI runs **on your machine**, not on your server. It manages remote servers o
 
 - **Server management** — register SSH servers, see live connection status, auto-reconnect on drop.
 - **One-command provisioning** — checks for Docker + Traefik and installs them remotely if missing.
-- **Deploy** — Docker Compose deploys with automatic Traefik routing (domain, port, HTTPS) — no hand-written labels. See [`docs/TRAEFIK-ROUTING.md`](./docs/TRAEFIK-ROUTING.md).
+- **Deploy** — Docker Compose paste **or GitHub repo** deploy with automatic Traefik routing (domain, port, HTTPS) — no hand-written labels. See [`docs/TRAEFIK-ROUTING.md`](./docs/TRAEFIK-ROUTING.md).
+- **Apps** — saved deployments with redeploy and optional auto-deploy (polls GitHub for new commits while DokTUI is open).
 - **Container management** — start/stop/restart/remove, live log streaming.
 - **Encrypted secrets** — per-app env/secrets, encrypted at rest.
 - **Built-in editor** — edit compose/env/config with Vim or non-Vim mode and syntax highlighting.
@@ -92,7 +93,8 @@ doktui
 
 1. **Register a server** — enter host, user, port, and an ACME email (for Let's Encrypt).
 2. **Provision** — DokTUI checks the server. If Docker/Traefik are missing, it installs them and creates the shared `doktui-network`.
-3. **Deploy** — go to Deployments, paste a `docker-compose.yml`, fill in domain + port + HTTPS, and deploy. DokTUI injects the Traefik routing for you.
+3. **Deploy** — go to Deployments → Deploy. Paste a `docker-compose.yml`, **or** press `m` for GitHub mode (store a `GITHUB_TOKEN` PAT under Secrets first, then `r` to load repos). Fill in domain + port + HTTPS and deploy. DokTUI injects Traefik routing for you.
+4. **Apps / auto-deploy** — successful deploys are saved under Deployments → Apps. Press Enter to redeploy. Enable **Auto-deploy** on GitHub apps to pull new commits while DokTUI stays open (~60s poll). This is **not** a Dokploy-style 24/7 webhook — when DokTUI is closed, nothing polls.
 
 On first run, DokTUI generates a **dedicated SSH key** (shown on the Welcome screen). Add its public key to your server's `~/.ssh/authorized_keys`.
 
