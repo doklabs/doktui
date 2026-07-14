@@ -6,7 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::state::AppState;
 use crate::ui::anim;
-use crate::ui::sprite::mascot_header_glyph;
+use crate::ui::sprite::{MascotContext, mascot_header_glyph};
 use crate::ui::theme::{Role, connection_badge, shortcut_line};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -19,7 +19,15 @@ pub fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
         .constraints([Constraint::Min(20), Constraint::Length(22)])
         .split(area);
 
-    let mascot = mascot_header_glyph(theme, state.anim_tick);
+    let mascot = mascot_header_glyph(
+        theme,
+        state.anim_tick,
+        MascotContext {
+            loading: state.loading,
+            error: state.error_message.is_some(),
+            success: state.achievement.is_some() || state.status_message.is_some(),
+        },
+    );
 
     let conn = state
         .selected_server

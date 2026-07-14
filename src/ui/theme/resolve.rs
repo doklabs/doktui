@@ -46,6 +46,9 @@ fn merge_glyphs(base: RawGlyphs, over: RawGlyphs) -> RawGlyphs {
         arrow: pick(over.arrow, base.arrow),
         star: pick(over.star, base.star),
         diamond: pick(over.diamond, base.diamond),
+        cross: pick(over.cross, base.cross),
+        warning: pick(over.warning, base.warning),
+        info: pick(over.info, base.info),
     }
 }
 
@@ -65,11 +68,6 @@ fn merge_motion(base: RawMotion, over: RawMotion) -> RawMotion {
 fn merge_mascot(base: RawMascot, over: RawMascot) -> RawMascot {
     RawMascot {
         idle: if over.idle.is_empty() { base.idle } else { over.idle },
-        blink: if over.blink.is_empty() {
-            base.blink
-        } else {
-            over.blink
-        },
     }
 }
 
@@ -129,6 +127,8 @@ pub fn resolve_theme(
     } else {
         raw
     };
+    super::validate::validate(&merged)
+        .context("theme validation failed")?;
     raw_to_theme(merged, fallback)
 }
 

@@ -93,7 +93,7 @@ home-deploy-running-0 = 0 deploy running
 home-deploy-running-1 = 1 deploy running
 home-stat-apps = Apps Online
 home-stat-cpu = CPU
-home-stat-uptime = Uptime
+home-stat-healthy = Healthy
 home-active-server =
     Active server: { $name } @ { $host }:{ $port }
     Status: { $dot } connected

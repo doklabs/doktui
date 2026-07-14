@@ -1,8 +1,10 @@
 use ratatui::Frame;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
-use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
+use crate::ui::components::{badge, container_status};
+use crate::ui::theme::{Role, accent_style, header_line, muted_style, panel_block, shortcut_line};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -42,14 +44,17 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 } else {
                     muted_style(theme)
                 };
-                ListItem::new(format!(
-                    "{prefix}{} — {} ({}) [{}]",
-                    c.name,
-                    c.status,
-                    c.image,
-                    short_container_id(&c.id)
-                ))
-                .style(style)
+                let status = container_status(&c.status);
+                let short_status = c.status.split_whitespace().next().unwrap_or(&c.status);
+                let badge = badge(theme, short_status, status);
+                let mut line = Line::from(vec![
+                    Span::styled(prefix.to_string(), style),
+                    Span::styled(format!("{} — ", c.name), theme.style(Role::Text)),
+                    Span::styled(format!("{} ", c.image), muted_style(theme)),
+                    Span::styled(format!("[{}] ", short_container_id(&c.id)), muted_style(theme)),
+                ]);
+                line.spans.extend(badge.spans);
+                ListItem::new(line).style(style)
             })
             .collect()
     };

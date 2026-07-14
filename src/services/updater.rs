@@ -178,7 +178,8 @@ async fn download_bytes(url: &str) -> Result<Vec<u8>> {
 }
 
 async fn download_text(url: &str) -> Result<String> {
-    Ok(String::from_utf8_lossy(&download_bytes(url).await?).into_owned())
+    String::from_utf8(download_bytes(url).await?)
+        .context("release metadata is not valid UTF-8")
 }
 
 fn release_target_triple() -> String {

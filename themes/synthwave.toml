@@ -1,0 +1,65 @@
+[meta]
+name = "synthwave"
+display_name = "Synthwave"
+author = "doklabs"
+
+# Dark neon synth palette
+[palette]
+void = "#0c0a18"
+surface = "#15122b"
+panel = "#1a1633"
+border = "#2f2b52"
+purple = "#b700ff"
+cyan = "#00f0ff"
+pink = "#ff00aa"
+green = "#00ff99"
+yellow = "#f7f700"
+red = "#ff0055"
+mist = "#625a8a"
+text = "#f0f0ff"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "pink"
+accent = "cyan"
+success = "green"
+warning = "yellow"
+danger = "red"
+selection = "purple"
+cursor = "cyan"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["◜", "◝", "◞", "◟"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+cross = "✗"
+warning = "!"
+info = "i"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]

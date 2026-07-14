@@ -34,7 +34,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const FRAME_RATE: Duration = Duration::from_millis(66);
 const HOUSEKEEPING: Duration = Duration::from_millis(1000);
 
-pub async fn run_tui() -> Result<()> {
+pub async fn run_tui(theme_override: Option<String>) -> Result<()> {
     let config = bootstrap()?;
     let public_key = keys::load_public_key_openssh()?;
     let public_key_fingerprint = keys::public_key_fingerprint().unwrap_or_default();
@@ -56,7 +56,8 @@ pub async fn run_tui() -> Result<()> {
 
     let (i18n, mut state) = {
         let cfg = config.lock().await;
-        let theme = ui::theme::ThemeRegistry::active(&cfg.theme);
+        let theme_name = theme_override.unwrap_or_else(|| cfg.theme.clone());
+        let theme = ui::theme::ThemeRegistry::active(&theme_name);
         let i18n = I18n::load(&cfg.locale)?;
         let locale_fallback = i18n.used_fallback();
         let locale_tag = cfg.locale.clone();
@@ -852,7 +853,10 @@ async fn update(
         Message::MetricsLoaded(result) => {
             state.loading = false;
             match result {
-                Ok(stats) => state.metrics = stats,
+                Ok(stats) => {
+                    state.record_metrics_history(&stats);
+                    state.metrics = stats;
+                }
                 Err(e) => push_error(state, e),
             }
         }

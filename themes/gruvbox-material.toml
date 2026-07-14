@@ -44,6 +44,9 @@ check = "✓"
 arrow = "▶"
 star = "★"
 diamond = "◆"
+cross = "✗"
+warning = "!"
+info = "i"
 
 [motion]
 spinner_period = 2

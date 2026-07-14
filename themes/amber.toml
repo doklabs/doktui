@@ -1,0 +1,64 @@
+[meta]
+name = "amber"
+display_name = "Amber Phosphor"
+author = "doklabs"
+
+# Classic amber-monochrome terminal palette
+[palette]
+void = "#0a0a0a"
+surface = "#141414"
+panel = "#1a1a1a"
+border = "#332200"
+amber = "#ffb000"
+amber_dim = "#7a5c00"
+green = "#80ff00"
+yellow = "#ffcc00"
+red = "#ff4400"
+text = "#ffdf80"
+mist = "#7a5c00"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "amber"
+accent = "amber"
+success = "green"
+warning = "yellow"
+danger = "red"
+selection = "amber"
+cursor = "amber"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["◜", "◝", "◞", "◟"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+cross = "✗"
+warning = "!"
+info = "i"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]

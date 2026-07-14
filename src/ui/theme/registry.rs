@@ -14,6 +14,10 @@ const BUILTIN: &[(&str, &str)] = &[
         include_str!("../../../themes/gruvbox-material.toml"),
     ),
     ("pico8", include_str!("../../../themes/pico8.toml")),
+    ("amber", include_str!("../../../themes/amber.toml")),
+    ("gameboy", include_str!("../../../themes/gameboy.toml")),
+    ("synthwave", include_str!("../../../themes/synthwave.toml")),
+    ("paper", include_str!("../../../themes/paper.toml")),
 ];
 
 pub struct ThemeRegistry {
@@ -58,6 +62,10 @@ impl ThemeRegistry {
         self.themes.get(name)
     }
 
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.themes.keys().map(String::as_str)
+    }
+
     pub fn active(name: &str) -> Theme {
         match Self::load_all() {
             Ok(reg) => reg
@@ -100,7 +108,6 @@ pub fn fallback_theme() -> Theme {
         motion: super::model::Motion::from(super::model::RawMotion::default()),
         mascot: Mascot {
             idle: vec!["(◕‿◕)".into()],
-            blink: vec!["(-‿-)".into()],
         },
     }
 }
