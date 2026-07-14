@@ -1,12 +1,12 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Modifier;
 use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::Frame;
 
 use crate::app::event::Message;
 use crate::app::state::{AppState, NavSection, UiMode};
 use crate::services::ssh::ConnectionState;
-use crate::ui::theme::{Role, bordered_block, muted_style, text_style};
+use crate::ui::theme::{bordered_block, muted_style, text_style, Role};
 
 use super::{nav_label, nav_shortcut};
 
@@ -168,17 +168,18 @@ pub fn render_sidebar(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let hint = if state.ui_mode == UiMode::Overlay {
         if state.sidebar_focused {
-            format!("\"{}\" · {}", i18n.t("sidebar-tagline"), i18n.t("sidebar-resize-hint"))
+            format!(
+                "\"{}\" · {}",
+                i18n.t("sidebar-tagline"),
+                i18n.t("sidebar-resize-hint")
+            )
         } else {
             format!("\"{}\"", i18n.t("sidebar-tagline"))
         }
     } else {
         i18n.t("sidebar-compact")
     };
-    frame.render_widget(
-        Paragraph::new(hint).style(muted_style(theme)),
-        chunks[2],
-    );
+    frame.render_widget(Paragraph::new(hint).style(muted_style(theme)), chunks[2]);
 }
 
 #[cfg(test)]

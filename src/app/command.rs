@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 use crate::config::{AppConfig, ServerConfig};
@@ -11,9 +11,9 @@ use crate::security::hostkey;
 use crate::services::docker::DockerController;
 use crate::services::provision::RemoteProvisioner;
 use crate::services::routing::{self, DomainSpec};
-use crate::services::traefik::{AcmeConfig, TraefikProvisioner, TraefikStatus};
 use crate::services::secrets::{self, SecretsManager};
 use crate::services::ssh::{SshConnectError, SshManager, SshSession};
+use crate::services::traefik::{AcmeConfig, TraefikProvisioner, TraefikStatus};
 use crate::services::updater::Updater;
 
 use super::event::Message;
@@ -166,9 +166,7 @@ impl CommandBus {
             };
             let logs = DockerController::stream_logs_prefix(session, &name, 100)
                 .await
-                .map(|s| {
-                    s.lines().map(String::from).collect::<Vec<_>>()
-                })
+                .map(|s| s.lines().map(String::from).collect::<Vec<_>>())
                 .map_err(|e| e.to_string());
             let logs = match logs {
                 Ok(lines) => {
@@ -291,21 +289,12 @@ impl CommandBus {
             };
 
             match ssh_manager
-                .connect_with_retry(
-                    server_id,
-                    &server.host,
-                    server.port,
-                    &server.user,
-                    false,
-                )
+                .connect_with_retry(server_id, &server.host, server.port, &server.user, false)
                 .await
             {
                 Ok(session) => {
                     sessions.lock().await.insert(server_id, session);
-                    let _ = tx.send(Message::SetStatus(format!(
-                        "connected to {}",
-                        server.name
-                    )));
+                    let _ = tx.send(Message::SetStatus(format!("connected to {}", server.name)));
                 }
                 Err(SshConnectError::HostKeyUnknown { fingerprint }) => {
                     let _ = tx.send(Message::HostKeyRequired {
@@ -348,13 +337,7 @@ impl CommandBus {
             };
 
             let session_result = ssh_manager
-                .connect_with_retry(
-                    server_id,
-                    &server.host,
-                    server.port,
-                    &server.user,
-                    false,
-                )
+                .connect_with_retry(server_id, &server.host, server.port, &server.user, false)
                 .await;
 
             let mut session = match session_result {
@@ -601,10 +584,7 @@ impl CommandBus {
                 let _ = cfg.save();
             }
 
-            let _ = tx.send(Message::CronJobDone {
-                id: job_id,
-                result,
-            });
+            let _ = tx.send(Message::CronJobDone { id: job_id, result });
         });
     }
 }

@@ -1,10 +1,10 @@
-use ratatui::Frame;
 use ratatui::text::Text;
 use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::{AppState, PendingAction};
 use crate::ui::components::card_with_role;
-use crate::ui::theme::{Role, error_style};
+use crate::ui::theme::{error_style, Role};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;

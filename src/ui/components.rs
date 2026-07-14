@@ -1,9 +1,9 @@
-use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+use ratatui::Frame;
 
 use crate::app::event::Message;
 use crate::app::state::AppState;
@@ -52,18 +52,13 @@ pub fn button(
 
     if area.height < 3 {
         frame.render_widget(
-            Paragraph::new(label)
-                .alignment(Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(fg)
-                        .bg(bg)
-                        .add_modifier(if active {
-                            ratatui::style::Modifier::BOLD
-                        } else {
-                            ratatui::style::Modifier::empty()
-                        }),
-                ),
+            Paragraph::new(label).alignment(Alignment::Center).style(
+                Style::default().fg(fg).bg(bg).add_modifier(if active {
+                    ratatui::style::Modifier::BOLD
+                } else {
+                    ratatui::style::Modifier::empty()
+                }),
+            ),
             area,
         );
         state.push_click(area, msg);
@@ -217,5 +212,3 @@ pub fn metric_bar(theme: &Theme, width: usize, percent: u8, invert: bool) -> Lin
     }
     Line::from(spans)
 }
-
-

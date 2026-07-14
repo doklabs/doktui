@@ -93,7 +93,7 @@ impl Screen {
             Screen::Welcome
                 | Screen::AddServer
                 | Screen::HostKeyPrompt
-                |             Screen::Provisioning
+                | Screen::Provisioning
                 | Screen::ConfirmDestructive
                 | Screen::Editor
         )
@@ -453,7 +453,9 @@ impl AppState {
     }
 
     pub fn push_click(&self, rect: ratatui::layout::Rect, msg: Message) {
-        self.click_regions.borrow_mut().push(ClickRegion { rect, msg });
+        self.click_regions
+            .borrow_mut()
+            .push(ClickRegion { rect, msg });
     }
 
     pub fn is_hovered(&self, rect: ratatui::layout::Rect) -> bool {

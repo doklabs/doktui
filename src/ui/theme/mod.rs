@@ -49,7 +49,12 @@ pub fn text_style(theme: &Theme) -> Style {
 }
 
 pub fn header_line(theme: &Theme, subtitle: &str) -> Line<'static> {
-    let mascot = theme.mascot.idle.first().cloned().unwrap_or_else(|| "(◕‿◕)".into());
+    let mascot = theme
+        .mascot
+        .idle
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "(◕‿◕)".into());
     Line::from(vec![
         Span::styled(mascot, theme.style(Role::Primary)),
         Span::raw(" "),
@@ -85,10 +90,7 @@ pub fn connection_badge(theme: &Theme, i18n: &I18n, state: ConnectionState) -> (
             i18n.t_fmt("conn-connecting", &[("dot", &theme.glyphs.dot_warn)]),
             warning_style(theme),
         ),
-        ConnectionState::Reconnecting => (
-            i18n.t("conn-reconnecting"),
-            warning_style(theme),
-        ),
+        ConnectionState::Reconnecting => (i18n.t("conn-reconnecting"), warning_style(theme)),
         ConnectionState::Disconnected => (
             i18n.t_fmt("conn-offline", &[("dot", &theme.glyphs.dot_off)]),
             muted_style(theme),
@@ -101,7 +103,10 @@ pub fn bordered_block<'a>(title: &'a str, theme: &Theme) -> Block<'a> {
         .borders(Borders::ALL)
         .border_set(border::PLAIN)
         .border_style(theme.style(Role::Border))
-        .title(Span::styled(format!(" {title} "), theme.style(Role::TextMuted)))
+        .title(Span::styled(
+            format!(" {title} "),
+            theme.style(Role::TextMuted),
+        ))
         .style(surface_style(theme))
 }
 

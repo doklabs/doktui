@@ -10,7 +10,11 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "doktui", version, about = "Terminal UI for remote server management")]
+#[command(
+    name = "doktui",
+    version,
+    about = "Terminal UI for remote server management"
+)]
 struct Cli {
     /// Use the specified theme instead of the configured one
     #[arg(short, long)]
@@ -46,7 +50,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Update) => app::run_update().await,
-        Some(Commands::Themes { action: ThemeCommands::List }) => list_themes(),
+        Some(Commands::Themes {
+            action: ThemeCommands::List,
+        }) => list_themes(),
         None => app::run_tui(cli.theme).await,
     }
 }

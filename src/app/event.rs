@@ -1,10 +1,10 @@
 use uuid::Uuid;
 
-use crate::services::docker::{ContainerInfo, ContainerStats, DeployReport, ScheduleInfo};
-use crate::services::routing::DomainSpec;
-use crate::services::provision::{ProvisionProgress, ProvisionResult};
-use crate::services::ssh::SshStatus;
 use crate::app::state::{HostKeyAfterAction, NavSection};
+use crate::services::docker::{ContainerInfo, ContainerStats, DeployReport, ScheduleInfo};
+use crate::services::provision::{ProvisionProgress, ProvisionResult};
+use crate::services::routing::DomainSpec;
+use crate::services::ssh::SshStatus;
 use crate::services::updater::UpdateNotice;
 
 #[derive(Debug, Clone)]
@@ -108,10 +108,22 @@ pub enum Message {
     CancelDestructive,
 
     // Container lifecycle
-    StartContainer { server_id: Uuid, name: String },
-    StopContainer { server_id: Uuid, name: String },
-    RestartContainer { server_id: Uuid, name: String },
-    RemoveContainer { server_id: Uuid, name: String },
+    StartContainer {
+        server_id: Uuid,
+        name: String,
+    },
+    StopContainer {
+        server_id: Uuid,
+        name: String,
+    },
+    RestartContainer {
+        server_id: Uuid,
+        name: String,
+    },
+    RemoveContainer {
+        server_id: Uuid,
+        name: String,
+    },
 
     // Status
     SetStatus(String),

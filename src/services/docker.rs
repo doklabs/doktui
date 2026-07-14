@@ -1,22 +1,22 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use super::routing::DomainSpec;
-use super::ssh::{CommandOutput, SshSession};
+use super::ssh::{CommandOutput, SshBackend};
 
 pub struct DockerController;
 
 impl DockerController {
-    pub async fn probe(session: &mut SshSession) -> Result<bool> {
+    pub async fn probe(session: &mut dyn SshBackend) -> Result<bool> {
         let out = session.exec("command -v docker").await?;
         Ok(out.exit_code == 0 && !out.stdout.trim().is_empty())
     }
 
-    pub async fn compose_available(session: &mut SshSession) -> Result<bool> {
+    pub async fn compose_available(session: &mut dyn SshBackend) -> Result<bool> {
         let out = session.exec("docker compose version").await?;
         Ok(out.exit_code == 0)
     }
 
-    pub async fn list_containers(session: &mut SshSession) -> Result<Vec<ContainerInfo>> {
+    pub async fn list_containers(session: &mut dyn SshBackend) -> Result<Vec<ContainerInfo>> {
         let out = session
             .exec("docker ps -a --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}'")
             .await?;
@@ -32,24 +32,24 @@ impl DockerController {
         Ok(containers)
     }
 
-    pub async fn start(session: &mut SshSession, name: &str) -> Result<CommandOutput> {
+    pub async fn start(session: &mut dyn SshBackend, name: &str) -> Result<CommandOutput> {
         session.exec(&format!("docker start {name}")).await
     }
 
-    pub async fn stop(session: &mut SshSession, name: &str) -> Result<CommandOutput> {
+    pub async fn stop(session: &mut dyn SshBackend, name: &str) -> Result<CommandOutput> {
         session.exec(&format!("docker stop {name}")).await
     }
 
-    pub async fn restart(session: &mut SshSession, name: &str) -> Result<CommandOutput> {
+    pub async fn restart(session: &mut dyn SshBackend, name: &str) -> Result<CommandOutput> {
         session.exec(&format!("docker restart {name}")).await
     }
 
-    pub async fn remove(session: &mut SshSession, name: &str) -> Result<CommandOutput> {
+    pub async fn remove(session: &mut dyn SshBackend, name: &str) -> Result<CommandOutput> {
         session.exec(&format!("docker rm -f {name}")).await
     }
 
     pub async fn deploy_compose(
-        session: &mut SshSession,
+        session: &mut dyn SshBackend,
         remote_dir: &str,
         compose_content: &str,
         env_vars: &[(String, String)],
@@ -91,14 +91,18 @@ impl DockerController {
         verify_deploy(session, remote_dir, routing, secrets_count).await
     }
 
-    pub async fn stream_logs_prefix(session: &mut SshSession, name: &str, lines: u16) -> Result<String> {
+    pub async fn stream_logs_prefix(
+        session: &mut dyn SshBackend,
+        name: &str,
+        lines: u16,
+    ) -> Result<String> {
         let out = session
             .exec(&format!("docker logs --tail {lines} {name} 2>&1"))
             .await?;
         Ok(out.stdout)
     }
 
-    pub async fn container_stats(session: &mut SshSession) -> Result<Vec<ContainerStats>> {
+    pub async fn container_stats(session: &mut dyn SshBackend) -> Result<Vec<ContainerStats>> {
         let out = session
             .exec(
                 "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}'",
@@ -115,7 +119,7 @@ impl DockerController {
             .collect())
     }
 
-    pub async fn list_restart_schedules(session: &mut SshSession) -> Result<Vec<ScheduleInfo>> {
+    pub async fn list_restart_schedules(session: &mut dyn SshBackend) -> Result<Vec<ScheduleInfo>> {
         let out = session
             .exec("docker ps -a --format '{{.Names}}|{{.Status}}'")
             .await?;
@@ -150,7 +154,7 @@ impl DockerController {
     }
 
     /// Pull latest images and recreate containers (for scheduled redeploy).
-    pub async fn redeploy_compose(session: &mut SshSession, remote_dir: &str) -> Result<()> {
+    pub async fn redeploy_compose(session: &mut dyn SshBackend, remote_dir: &str) -> Result<()> {
         let out = session
             .exec(&format!(
                 "cd {remote_dir} && docker compose pull && docker compose up -d"
@@ -181,7 +185,7 @@ impl DeployReport {
 }
 
 async fn verify_deploy(
-    session: &mut SshSession,
+    session: &mut dyn SshBackend,
     remote_dir: &str,
     routing: Option<&DomainSpec>,
     secrets_count: usize,
@@ -239,7 +243,9 @@ async fn verify_deploy(
     }
 
     if secrets_count > 0 {
-        lines.push(format!("• secrets: {secrets_count} vars uploaded to .env ✓"));
+        lines.push(format!(
+            "• secrets: {secrets_count} vars uploaded to .env ✓"
+        ));
     }
 
     let report = DeployReport {
@@ -249,7 +255,10 @@ async fn verify_deploy(
     };
 
     if !report.container_ok {
-        bail!("{}\n\ncontainer failed to start — check logs with Deployments → Logs", report.summary());
+        bail!(
+            "{}\n\ncontainer failed to start — check logs with Deployments → Logs",
+            report.summary()
+        );
     }
 
     Ok(report)
@@ -296,4 +305,102 @@ fn parse_container_line(line: &str) -> Option<ContainerInfo> {
         status: parts.next()?.to_string(),
         image: parts.next()?.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use async_trait::async_trait;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct MockSshBackend {
+        commands: Vec<String>,
+        responses: HashMap<String, CommandOutput>,
+    }
+
+    #[async_trait]
+    impl SshBackend for MockSshBackend {
+        async fn exec(&mut self, command: &str) -> Result<CommandOutput> {
+            self.commands.push(command.to_string());
+            Ok(self
+                .responses
+                .get(command)
+                .cloned()
+                .unwrap_or(CommandOutput {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }))
+        }
+
+        async fn write_remote_file(&mut self, _remote_path: &str, _content: &[u8]) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_detects_docker() {
+        let mut backend = MockSshBackend {
+            responses: HashMap::from([(
+                "command -v docker".to_string(),
+                CommandOutput {
+                    stdout: "/usr/bin/docker\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                },
+            )]),
+            ..Default::default()
+        };
+
+        assert!(DockerController::probe(&mut backend).await.unwrap());
+        assert_eq!(backend.commands, vec!["command -v docker"]);
+    }
+
+    #[tokio::test]
+    async fn list_containers_parses_output() {
+        let mut backend = MockSshBackend {
+            responses: HashMap::from([(
+                "docker ps -a --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}'".to_string(),
+                CommandOutput {
+                    stdout: "abc123|my-app|Up 2 hours|nginx:latest".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let containers = DockerController::list_containers(&mut backend)
+            .await
+            .unwrap();
+
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].id, "abc123");
+        assert_eq!(containers[0].name, "my-app");
+        assert_eq!(containers[0].status, "Up 2 hours");
+        assert_eq!(containers[0].image, "nginx:latest");
+    }
+
+    #[tokio::test]
+    async fn list_containers_filters_empty_lines() {
+        let mut backend = MockSshBackend {
+            responses: HashMap::from([(
+                "docker ps -a --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}'".to_string(),
+                CommandOutput {
+                    stdout: "\n\nabc123|my-app|Up|nginx\n\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let containers = DockerController::list_containers(&mut backend)
+            .await
+            .unwrap();
+        assert_eq!(containers.len(), 1);
+    }
 }
