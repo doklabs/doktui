@@ -78,12 +78,12 @@ mode-overlay = overlay
 mode-compact = compact
 mode-sidebar = sidebar
 mode-content = content
-mode-hint = { $mode } • { $focus } • Ctrl+F search • m mode
+mode-hint = { $mode } • { $focus } • F6 focus • Ctrl+U mode
 
 # Status bar
 status-working = { $spin } working…
 status-error-suffix = (E = full error)
-status-default-hint = Ctrl+C quit • Ctrl+F search • Tab focus
+status-default-hint = Ctrl+C quit • Ctrl+F search • F6 focus
 status-update-available = { $star } { $version } available — run `doktui update`
 
 # Home dashboard
@@ -122,6 +122,8 @@ servers-shortcut-select = select
 servers-shortcut-connect = connect
 servers-shortcut-provision = provision
 servers-shortcut-add = add
+servers-shortcut-open = open
+servers-shortcut-remove = remove
 servers-shortcut-back = back
 
 # Deployments hub
@@ -131,7 +133,7 @@ deploy-hub-no-target = Target: (none — pick server in Projects)
 deploy-hub-item-deploy = [d] Deploy — docker compose to server
 deploy-hub-item-containers = [c] Containers — start/stop/restart
 deploy-hub-item-logs = [l] Logs — stream container output
-deploy-hub-item-secrets = [v] Secrets — env vars (encrypted locally)
+deploy-hub-item-secrets = [s] Secrets — env vars (encrypted locally)
 deploy-hub-item-editor = [e] Editor — edit compose file
 deploy-hub-shortcut-deploy = deploy
 deploy-hub-shortcut-containers = containers
@@ -167,6 +169,7 @@ containers-shortcut-start = start
 containers-shortcut-stop = stop
 containers-shortcut-restart = restart
 containers-shortcut-remove = remove
+containers-shortcut-logs = logs
 containers-shortcut-back = back
 
 # Logs
@@ -242,6 +245,7 @@ provision-os = OS: { $os }
 # Confirm dialog
 confirm-title = Confirm
 confirm-remove-container = Remove container '{ $name }'? This cannot be undone.
+confirm-remove-server = Remove server '{ $name }'? This cannot be undone.
 confirm-generic = Confirm action?
 confirm-hint = Press [y] to confirm, [n] or Esc to cancel.
 
@@ -266,6 +270,7 @@ status-editor-saved = editor saved
 status-provisioned = server provisioned successfully
 status-cron-saved = cron job saved
 status-cron-deleted = cron job deleted
+status-server-removed = Server '{ $name }' removed
 status-connecting = connecting…
 status-deploy-warnings = deploy completed with warnings
 achievement-first-https = First HTTPS Deploy

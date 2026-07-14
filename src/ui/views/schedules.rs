@@ -39,10 +39,13 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("a", &i18n.t("schedules-shortcut-add")),
-                ("t", &i18n.t("schedules-shortcut-toggle")),
-                ("d", &i18n.t("schedules-shortcut-delete")),
                 ("j/k", &i18n.t("schedules-shortcut-select")),
+                ("a", &i18n.t("schedules-shortcut-add")),
+                ("x", &i18n.t("schedules-shortcut-delete")),
+                ("t", &i18n.t("schedules-shortcut-toggle")),
+                ("Enter", &i18n.t("shortcut-open")),
+                ("b", &i18n.t("shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {

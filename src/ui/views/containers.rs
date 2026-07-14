@@ -74,11 +74,13 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             theme,
             &[
                 ("j/k", &i18n.t("containers-shortcut-select")),
-                ("S", &i18n.t("containers-shortcut-start")),
                 ("s", &i18n.t("containers-shortcut-stop")),
-                ("R", &i18n.t("containers-shortcut-restart")),
-                ("r", &i18n.t("containers-shortcut-remove")),
+                ("S", &i18n.t("containers-shortcut-start")),
+                ("r", &i18n.t("containers-shortcut-restart")),
+                ("x", &i18n.t("containers-shortcut-remove")),
+                ("l", &i18n.t("containers-shortcut-logs")),
                 ("b", &i18n.t("containers-shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {

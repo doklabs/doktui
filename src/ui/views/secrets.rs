@@ -90,8 +90,8 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             &[
                 ("Tab", &i18n.t("secrets-shortcut-tab")),
                 ("Enter", &i18n.t("secrets-shortcut-save")),
-                ("d", &i18n.t("secrets-shortcut-delete")),
-                ("b", &i18n.t("secrets-shortcut-back")),
+                ("Ctrl+x", &i18n.t("secrets-shortcut-delete")),
+                ("Esc", &i18n.t("secrets-shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

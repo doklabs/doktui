@@ -13,6 +13,15 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Some(PendingAction::RemoveContainer { name }) => {
             i18n.t_fmt("confirm-remove-container", &[("name", name)])
         }
+        Some(PendingAction::RemoveServer { id }) => {
+            let name = state
+                .servers
+                .iter()
+                .find(|s| s.id == *id)
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| id.to_string());
+            i18n.t_fmt("confirm-remove-server", &[("name", &name)])
+        }
         None => i18n.t("confirm-generic"),
     };
 

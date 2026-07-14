@@ -59,7 +59,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     frame.render_widget(
         Paragraph::new(shortcut_line(
             theme,
-            &[("b", &i18n.t("logs-shortcut-back"))],
+            &[
+                ("b", &i18n.t("logs-shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
+            ],
         )),
         ratatui::layout::Rect {
             x: inner.x,

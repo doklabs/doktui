@@ -6,7 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::state::AppState;
 use crate::services::ssh::ConnectionState;
 use crate::ui::components::{health_bar, sparkline};
-use crate::ui::theme::{header_line, muted_style, panel_block, text_style, Role};
+use crate::ui::theme::{header_line, muted_style, panel_block, shortcut_line, text_style, Role};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -18,7 +18,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(4)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(4),
+            Constraint::Length(1),
+        ])
         .split(inner);
 
     let subtitle = i18n.t("monitoring-title");
@@ -118,6 +122,17 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             .wrap(Wrap { trim: false })
             .style(text_style(theme)),
         chunks[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(shortcut_line(
+            theme,
+            &[
+                ("b", &i18n.t("shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
+            ],
+        )),
+        chunks[2],
     );
 }
 

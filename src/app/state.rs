@@ -237,6 +237,7 @@ pub fn hit(r: ratatui::layout::Rect, col: u16, row: u16) -> bool {
 #[derive(Debug, Clone)]
 pub enum PendingAction {
     RemoveContainer { name: String },
+    RemoveServer { id: Uuid },
 }
 
 #[derive(Debug)]
@@ -272,6 +273,8 @@ pub struct AppState {
     pub public_key: String,
     pub public_key_fingerprint: String,
     pub loading: bool,
+    /// True only while a compose deploy is in flight (Home deploy panel).
+    pub deploying: bool,
     pub should_quit: bool,
     pub editor: Option<crate::ui::editor::CanvasEditor>,
     pub editor_mode: EditorMode,
@@ -378,6 +381,7 @@ impl AppState {
             public_key,
             public_key_fingerprint,
             loading: false,
+            deploying: false,
             should_quit: false,
             editor: None,
             editor_mode,
