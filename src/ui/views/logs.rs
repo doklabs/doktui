@@ -1,8 +1,9 @@
 use ratatui::Frame;
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::state::AppState;
-use crate::ui::theme::{header_line, muted_style, panel_block, shortcut_line};
+use crate::ui::theme::{error_style, header_line, muted_style, panel_block, shortcut_line, warning_style};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -28,13 +29,19 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     );
 
     let text = if state.logs.is_empty() {
-        if state.loading {
+        Text::from(vec![Line::from(if state.loading {
             i18n.t("logs-fetching")
         } else {
             i18n.t("logs-empty")
-        }
+        })])
     } else {
-        state.logs.join("\n")
+        Text::from(
+            state
+                .logs
+                .iter()
+                .map(|line| log_line(theme, line))
+                .collect::<Vec<_>>(),
+        )
     };
 
     frame.render_widget(
@@ -52,7 +59,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     frame.render_widget(
         Paragraph::new(shortcut_line(
             theme,
-            &[("b", &i18n.t("logs-shortcut-back"))],
+            &[
+                ("b", &i18n.t("logs-shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
+            ],
         )),
         ratatui::layout::Rect {
             x: inner.x,
@@ -61,4 +71,16 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             height: 1,
         },
     );
+}
+
+fn log_line(theme: &crate::ui::theme::Theme, line: &str) -> Line<'static> {
+    let lower = line.to_lowercase();
+    let style = if lower.contains("error") {
+        error_style(theme)
+    } else if lower.contains("warn") {
+        warning_style(theme)
+    } else {
+        return Line::from(Span::raw(line.to_string()));
+    };
+    Line::from(Span::styled(line.to_string(), style))
 }

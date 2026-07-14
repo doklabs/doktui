@@ -419,7 +419,7 @@ impl CommandBus {
         tokio::spawn(async move {
             let mut guard = sessions.lock().await;
             let Some(session) = guard.get_mut(&server_id) else {
-                let _ = tx.send(Message::SetError(no_ssh));
+                let _ = tx.send(Message::ContainersLoaded(Err(no_ssh)));
                 return;
             };
             let result = match action.as_str() {
@@ -429,21 +429,24 @@ impl CommandBus {
                 "remove" => DockerController::remove(session, &name).await,
                 _ => return,
             };
-            match result {
+            match &result {
                 Ok(out) if out.exit_code == 0 => {
                     let _ = tx.send(Message::SetStatus(ok_msg));
-                    let reload = DockerController::list_containers(session)
-                        .await
-                        .map_err(|e| e.to_string());
-                    let _ = tx.send(Message::ContainersLoaded(reload));
                 }
                 Ok(out) => {
-                    let _ = tx.send(Message::SetError(out.stderr));
+                    let _ = tx.send(Message::SetError(out.stderr.trim().to_string()));
                 }
                 Err(e) => {
                     let _ = tx.send(Message::SetError(e.to_string()));
                 }
             }
+            let reload = match result {
+                Ok(_) => DockerController::list_containers(session)
+                    .await
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = tx.send(Message::ContainersLoaded(reload));
         });
     }
 

@@ -47,6 +47,9 @@ pub enum Message {
     SelectServer(Uuid),
     ConnectServer(Uuid),
     ProvisionServer(Uuid),
+    ServerNext,
+    ServerPrev,
+    RequestRemoveServer(Uuid),
 
     // Host key
     HostKeyRequired {

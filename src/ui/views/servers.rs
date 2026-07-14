@@ -1,9 +1,12 @@
 use ratatui::Frame;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
+use crate::services::ssh::ConnectionState;
+use crate::ui::components::{Status, badge};
 use crate::ui::layout;
-use crate::ui::theme::{connection_badge, header_line, panel_block, shortcut_line};
+use crate::ui::theme::{header_line, muted_style, panel_block, shortcut_line, Role};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -35,16 +38,18 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         })
         .map(|(i, s)| {
             let selected = state.selected_server == Some(s.id);
-            let (badge, _) = connection_badge(theme, i18n, state.connection_state(s.id));
+            let state = state.connection_state(s.id);
+            let (status, status_label) = connection_status(&state, i18n);
+            let status_badge = badge(theme, &status_label, status);
             let prefix = if selected { "▸ " } else { "  " };
-            ListItem::new(format!(
-                "{prefix}[{}] {} — {}@{}:{} {badge}",
-                i + 1,
-                s.name,
-                s.user,
-                s.host,
-                s.port
-            ))
+            let mut line = Line::from(vec![
+                Span::styled(prefix.to_string(), theme.style(Role::Text)),
+                Span::styled(format!("[{}] ", i + 1), muted_style(theme)),
+                Span::styled(format!("{} — ", s.name), theme.style(Role::Text)),
+                Span::styled(format!("{}@{}:{} ", s.user, s.host, s.port), muted_style(theme)),
+            ]);
+            line.spans.extend(status_badge.spans);
+            ListItem::new(line)
         })
         .collect();
 
@@ -62,11 +67,14 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("1-9", &i18n.t("servers-shortcut-select")),
+                ("j/k", &i18n.t("servers-shortcut-select")),
+                ("Enter", &i18n.t("servers-shortcut-open")),
+                ("a", &i18n.t("servers-shortcut-add")),
                 ("c", &i18n.t("servers-shortcut-connect")),
                 ("p", &i18n.t("servers-shortcut-provision")),
-                ("a", &i18n.t("servers-shortcut-add")),
+                ("x", &i18n.t("servers-shortcut-remove")),
                 ("b", &i18n.t("servers-shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {
@@ -76,4 +84,22 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             height: 1,
         },
     );
+}
+
+fn connection_status(state: &ConnectionState, i18n: &crate::i18n::I18n) -> (Status, String) {
+    match state {
+        ConnectionState::Connected => (
+            Status::Success,
+            i18n.t_fmt("conn-online", &[("dot", "")]).trim().to_string(),
+        ),
+        ConnectionState::Connecting => (
+            Status::Warning,
+            i18n.t_fmt("conn-connecting", &[("dot", "")]).trim().to_string(),
+        ),
+        ConnectionState::Reconnecting => (Status::Warning, i18n.t("conn-reconnecting")),
+        ConnectionState::Disconnected => (
+            Status::Danger,
+            i18n.t_fmt("conn-offline", &[("dot", "")]).trim().to_string(),
+        ),
+    }
 }

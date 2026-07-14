@@ -6,7 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::state::AppState;
 use crate::ui::anim;
-use crate::ui::components::health_bar;
+use crate::ui::components::{health_bar, metric_bar, stat};
 use crate::ui::theme::{Role, muted_style, panel_block, success_style, text_style, warning_style};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         .iter()
         .filter(|c| c.status.to_lowercase().contains("up"))
         .count();
-    let deploy_note = if state.loading {
+    let deploy_note = if state.deploying {
         i18n.t("home-deploy-running-1")
     } else {
         i18n.t("home-deploy-running-0")
@@ -61,7 +61,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     render_stat_row(frame, chunks[1], state, running, app_count);
 
-    if state.loading {
+    if state.deploying {
         render_deploy_panel(frame, chunks[2], state);
     } else {
         render_overview(frame, chunks[2], state);
@@ -84,84 +84,53 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         ])
         .split(area);
 
+    let pulse = anim::pulse(theme, state.metrics_tick as u64);
     let apps_pct = if total > 0 {
         (running * 100 / total) as u8
     } else {
         0
     };
-    let apps_bar = anim::gradient_bar(theme, 12, apps_pct);
-    let pulse = anim::pulse(theme, state.metrics_tick as u64);
     let apps_label = format!("{running:02}/{total:02}");
-    stat_card(
-        frame,
-        cols[0],
-        theme,
-        &i18n.t("home-stat-apps"),
-        Line::from(vec![
-            Span::styled(apps_bar, theme.style(Role::Success)),
-            Span::styled(
-                format!(" {apps_label}"),
-                theme.style(Role::Success).add_modifier(if pulse > 0.5 {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
-            ),
-        ]),
-        Role::Success,
-    );
+    let mut apps_line = metric_bar(theme, 12, apps_pct, true);
+    apps_line.spans.push(Span::styled(
+        format!(" {apps_label}"),
+        theme.style(Role::Success).add_modifier(if pulse > 0.5 {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        }),
+    ));
+    stat(frame, cols[0], &i18n.t("home-stat-apps"), apps_line, Role::Success, theme);
 
     let cpu = state
         .metrics
         .first()
         .and_then(|m| m.cpu_percent.trim_end_matches('%').parse::<u8>().ok())
         .unwrap_or(0);
-    let cpu_bar = health_bar(cpu, 12, theme);
-    let mut cpu_spans = cpu_bar.spans;
-    cpu_spans.push(Span::styled(format!(" {cpu}%"), theme.style(Role::Warning)));
-    stat_card(
-        frame,
-        cols[1],
-        theme,
-        &i18n.t("home-stat-cpu"),
-        Line::from(cpu_spans),
-        Role::Warning,
-    );
+    let mut cpu_line = health_bar(cpu, 12, theme);
+    cpu_line.spans.push(Span::styled(
+        format!(" {cpu}%"),
+        theme.style(Role::Warning),
+    ));
+    stat(frame, cols[1], &i18n.t("home-stat-cpu"), cpu_line, Role::Warning, theme);
 
-    stat_card(
-        frame,
-        cols[2],
-        theme,
-        &i18n.t("home-stat-uptime"),
-        Line::from(vec![
-            Span::styled(
-                anim::gradient_bar(theme, 12, 99),
-                theme.style(Role::Accent),
-            ),
-            Span::styled(
-                format!(" {:.1}%", 99.9 * f64::from(pulse)),
-                theme.style(Role::Accent),
-            ),
-        ]),
-        Role::Accent,
-    );
-}
-
-fn stat_card(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &crate::ui::theme::Theme,
-    title: &str,
-    value: Line<'_>,
-    value_role: Role,
-) {
-    let block = panel_block(title, theme);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    frame.render_widget(
-        Paragraph::new(value).style(theme.style_bold(value_role)),
-        inner,
-    );
+    let (connected, server_total) = state.connected_server_count();
+    let healthy_pct = if server_total > 0 {
+        (connected * 100 / server_total) as u8
+    } else {
+        0
+    };
+    let healthy_label = format!("{connected:02}/{server_total:02}");
+    let mut healthy_line = metric_bar(theme, 12, healthy_pct, true);
+    healthy_line.spans.push(Span::styled(
+        format!(" {healthy_label}"),
+        theme.style(Role::Accent).add_modifier(if pulse > 0.5 {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        }),
+    ));
+    stat(frame, cols[2], &i18n.t("home-stat-healthy"), healthy_line, Role::Accent, theme);
 }
 
 fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {

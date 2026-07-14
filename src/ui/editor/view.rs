@@ -53,7 +53,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if line_idx < line_count {
             let gutter = format!("{:>gutter_width$} ", line_idx + 1);
             let mut spans = vec![Span::styled(gutter, muted_style(theme))];
-            let highlighted = highlight_line(editor.language, &source, line_idx);
+            let highlighted = highlight_line(editor.language, &source, line_idx, theme);
             spans.extend(highlighted.spans);
             frame.render_widget(Paragraph::new(Line::from(spans)), line_area);
 

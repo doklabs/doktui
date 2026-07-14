@@ -1,8 +1,10 @@
 use ratatui::Frame;
+use ratatui::text::Text;
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::state::{AppState, PendingAction};
-use crate::ui::theme::{error_style, panel_block, title_style};
+use crate::ui::components::card_with_role;
+use crate::ui::theme::{Role, error_style};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -11,18 +13,28 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Some(PendingAction::RemoveContainer { name }) => {
             i18n.t_fmt("confirm-remove-container", &[("name", name)])
         }
+        Some(PendingAction::RemoveServer { id }) => {
+            let name = state
+                .servers
+                .iter()
+                .find(|s| s.id == *id)
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| id.to_string());
+            i18n.t_fmt("confirm-remove-server", &[("name", &name)])
+        }
         None => i18n.t("confirm-generic"),
     };
 
-    let panel_title = format!(" {} ", i18n.t("confirm-title"));
-    let block = panel_block(&panel_title, theme).style(title_style(theme));
-    let p = Paragraph::new(vec![
+    let panel_title = i18n.t("confirm-title");
+    let block = card_with_role(&panel_title, theme, Role::Danger);
+    let text = Text::from(vec![
         action.into(),
         "".into(),
         i18n.t("confirm-hint").into(),
-    ])
-    .style(error_style(theme))
-    .wrap(Wrap { trim: true })
-    .block(block);
+    ]);
+    let p = Paragraph::new(text)
+        .style(error_style(theme))
+        .wrap(Wrap { trim: true })
+        .block(block);
     frame.render_widget(p, area);
 }
