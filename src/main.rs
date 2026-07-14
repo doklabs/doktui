@@ -12,6 +12,9 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(name = "doktui", version, about = "Terminal UI for remote server management")]
 struct Cli {
+    /// Use the specified theme instead of the configured one
+    #[arg(short, long)]
+    theme: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -20,6 +23,17 @@ struct Cli {
 enum Commands {
     /// Check for updates and replace the binary (script installs only)
     Update,
+    /// Theme management
+    Themes {
+        #[command(subcommand)]
+        action: ThemeCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ThemeCommands {
+    /// List installed themes
+    List,
 }
 
 #[tokio::main]
@@ -32,6 +46,17 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Update) => app::run_update().await,
-        None => app::run_tui().await,
+        Some(Commands::Themes { action: ThemeCommands::List }) => list_themes(),
+        None => app::run_tui(cli.theme).await,
     }
+}
+
+fn list_themes() -> Result<()> {
+    let reg = ui::theme::ThemeRegistry::load_all()?;
+    for name in reg.names() {
+        if let Some(theme) = reg.get(name) {
+            println!("{:<20} {}", theme.meta.name, theme.meta.display_name);
+        }
+    }
+    Ok(())
 }

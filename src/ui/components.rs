@@ -3,7 +3,7 @@ use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app::event::Message;
 use crate::app::state::AppState;
@@ -87,28 +87,7 @@ pub fn button(
 }
 
 pub fn health_bar(pct: u8, width: usize, theme: &Theme) -> Line<'static> {
-    let width = width.max(1);
-    let filled = (pct as usize * width) / 100;
-    let role = match pct {
-        0..=59 => Role::Success,
-        60..=84 => Role::Warning,
-        _ => Role::Danger,
-    };
-    let mut spans = Vec::with_capacity(width);
-    for i in 0..width {
-        let g = if i < filled {
-            &theme.glyphs.bar_full
-        } else {
-            &theme.glyphs.bar_empty
-        };
-        let c = if i < filled {
-            theme.color(role)
-        } else {
-            theme.color(Role::Border)
-        };
-        spans.push(Span::styled(g.clone(), Style::default().fg(c)));
-    }
-    Line::from(spans)
+    metric_bar(theme, width, pct, false)
 }
 
 pub fn sparkline(values: &[u8], width: usize, theme: &Theme) -> Line<'static> {
@@ -131,3 +110,112 @@ pub fn sparkline(values: &[u8], width: usize, theme: &Theme) -> Line<'static> {
         .collect();
     Line::from(spans)
 }
+
+/// Status kinds for `badge`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Success,
+    Warning,
+    Danger,
+    Info,
+    Muted,
+}
+
+/// Map a Docker-style container status string to a status kind.
+pub fn container_status(status: &str) -> Status {
+    let s = status.to_lowercase();
+    if s.starts_with("up") {
+        Status::Success
+    } else if s.contains("restarting") {
+        Status::Warning
+    } else if s.starts_with("exited") {
+        Status::Danger
+    } else {
+        Status::Info
+    }
+}
+
+/// A short colored label with an icon glyph.
+pub fn badge(theme: &Theme, label: &str, status: Status) -> Line<'static> {
+    let (glyph, role) = match status {
+        Status::Success => (theme.glyphs.dot_on.clone(), Role::Success),
+        Status::Warning => (theme.glyphs.warning.clone(), Role::Warning),
+        Status::Danger => (theme.glyphs.cross.clone(), Role::Danger),
+        Status::Info => (theme.glyphs.info.clone(), Role::Accent),
+        Status::Muted => (theme.glyphs.dot_off.clone(), Role::TextMuted),
+    };
+    Line::from(vec![
+        Span::styled(format!("{glyph} "), theme.style(role)),
+        Span::styled(label.to_string(), theme.style(role)),
+    ])
+}
+
+/// A block with internal padding, used as a card/container in views.
+pub fn card<'a>(title: &'a str, theme: &Theme) -> Block<'a> {
+    card_with_role(title, theme, Role::Primary)
+}
+
+/// A card with a specific border/title role.
+pub fn card_with_role<'a>(title: &'a str, theme: &Theme, role: Role) -> Block<'a> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_set(border::PLAIN)
+        .border_style(theme.style(role))
+        .title(Span::styled(
+            format!(" {title} "),
+            theme.style_bold(Role::Text),
+        ))
+        .style(theme.style_bg(Role::Surface))
+        .padding(Padding::uniform(1))
+}
+
+/// A stat card with a title and a value line.
+pub fn stat(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    value: Line<'static>,
+    role: Role,
+    theme: &Theme,
+) {
+    let block = card(title, theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(
+        Paragraph::new(value)
+            .alignment(Alignment::Center)
+            .style(theme.style(role)),
+        inner,
+    );
+}
+
+/// A bar whose color thresholds can be inverted so that a high value is good.
+pub fn metric_bar(theme: &Theme, width: usize, percent: u8, invert: bool) -> Line<'static> {
+    let role = if invert {
+        match percent {
+            0..=59 => Role::Danger,
+            60..=84 => Role::Warning,
+            _ => Role::Success,
+        }
+    } else {
+        match percent {
+            0..=59 => Role::Success,
+            60..=84 => Role::Warning,
+            _ => Role::Danger,
+        }
+    };
+    let mut spans = Vec::with_capacity(width);
+    let width = width.max(1);
+    let filled = (percent as usize * width) / 100;
+    for i in 0..width {
+        let (g, c) = if i < filled {
+            (&theme.glyphs.bar_full, theme.color(role))
+        } else {
+            (&theme.glyphs.bar_empty, theme.color(Role::Border))
+        };
+        spans.push(Span::styled(g.clone(), Style::default().fg(c)));
+    }
+    Line::from(spans)
+}
+
+

@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 use uuid::Uuid;
 
@@ -254,6 +255,7 @@ pub struct AppState {
     pub containers: Vec<ContainerInfo>,
     pub selected_container: usize,
     pub metrics: Vec<ContainerStats>,
+    pub metrics_history: HashMap<String, Vec<u8>>,
     pub metrics_tick: u8,
     pub secret_keys: Vec<String>,
     pub schedules: Vec<crate::services::docker::ScheduleInfo>,
@@ -359,6 +361,7 @@ impl AppState {
             containers: Vec::new(),
             selected_container: 0,
             metrics: Vec::new(),
+            metrics_history: HashMap::new(),
             metrics_tick: 0,
             secret_keys: Vec::new(),
             schedules: Vec::new(),
@@ -387,6 +390,30 @@ impl AppState {
             .find(|s| s.server_id == id)
             .map(|s| s.state)
             .unwrap_or(ConnectionState::Disconnected)
+    }
+
+    pub fn connected_server_count(&self) -> (usize, usize) {
+        let connected = self
+            .servers
+            .iter()
+            .filter(|s| self.connection_state(s.id) == ConnectionState::Connected)
+            .count();
+        (connected, self.servers.len())
+    }
+
+    pub fn record_metrics_history(&mut self, stats: &[ContainerStats]) {
+        for stat in stats {
+            let cpu = stat
+                .cpu_percent
+                .trim_end_matches('%')
+                .parse::<u8>()
+                .unwrap_or(0);
+            let entry = self.metrics_history.entry(stat.name.clone()).or_default();
+            entry.push(cpu);
+            if entry.len() > 8 {
+                entry.remove(0);
+            }
+        }
     }
 
     pub fn set_connection(&mut self, status: SshStatus) {

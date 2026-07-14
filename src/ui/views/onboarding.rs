@@ -10,7 +10,7 @@ use crate::app::state::AppState;
 use crate::security::hostkey;
 use crate::ui::components::button;
 use crate::ui::layout::centered_rect;
-use crate::ui::sprite::{mascot_anim, mascot_bob, mascot_palette, mascot_sprite_for, render_sprite};
+use crate::ui::sprite::{MascotContext, mascot_anim, mascot_bob, mascot_palette, mascot_sprite_for, render_sprite};
 use crate::ui::theme::{
     accent_style, muted_style, panel_block, shortcut_hint_line, success_style, title_style,
     welcome_card_block, Role, Theme,
@@ -228,7 +228,12 @@ fn render_mascot(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
         ])
         .split(area);
 
-    let anim = mascot_anim(state.anim_tick, theme);
+    let context = MascotContext {
+        loading: state.loading,
+        error: state.error_message.is_some(),
+        success: state.status_message.is_some(),
+    };
+    let anim = mascot_anim(state.anim_tick, theme, context);
     let sprite = mascot_sprite_for(anim);
     let pal = mascot_palette(theme);
     let lines = render_sprite(sprite, &pal);

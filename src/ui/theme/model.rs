@@ -65,7 +65,7 @@ pub struct ThemeMeta {
     pub extends: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RawGlyphs {
     #[serde(default = "default_bar_full")]
     pub bar_full: String,
@@ -89,6 +89,12 @@ pub struct RawGlyphs {
     pub star: String,
     #[serde(default = "default_diamond")]
     pub diamond: String,
+    #[serde(default = "default_cross")]
+    pub cross: String,
+    #[serde(default = "default_warning")]
+    pub warning: String,
+    #[serde(default = "default_info")]
+    pub info: String,
 }
 
 fn default_bar_full() -> String {
@@ -126,6 +132,36 @@ fn default_star() -> String {
 }
 fn default_diamond() -> String {
     "◆".into()
+}
+fn default_cross() -> String {
+    "✗".into()
+}
+fn default_warning() -> String {
+    "!".into()
+}
+fn default_info() -> String {
+    "i".into()
+}
+
+impl Default for RawGlyphs {
+    fn default() -> Self {
+        Self {
+            bar_full: default_bar_full(),
+            bar_empty: default_bar_empty(),
+            spinner: default_spinner(),
+            dot_on: default_dot_on(),
+            dot_warn: default_dot_warn(),
+            dot_off: default_dot_off(),
+            sparkline: default_sparkline(),
+            check: default_check(),
+            arrow: default_arrow(),
+            star: default_star(),
+            diamond: default_diamond(),
+            cross: default_cross(),
+            warning: default_warning(),
+            info: default_info(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -168,8 +204,6 @@ fn default_true() -> bool {
 pub struct RawMascot {
     #[serde(default)]
     pub idle: Vec<String>,
-    #[serde(default)]
-    pub blink: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -200,6 +234,9 @@ pub struct GlyphSet {
     pub arrow: String,
     pub star: String,
     pub diamond: String,
+    pub cross: String,
+    pub warning: String,
+    pub info: String,
 }
 
 impl From<RawGlyphs> for GlyphSet {
@@ -216,6 +253,9 @@ impl From<RawGlyphs> for GlyphSet {
             arrow: g.arrow,
             star: g.star,
             diamond: g.diamond,
+            cross: g.cross,
+            warning: g.warning,
+            info: g.info,
         }
     }
 }
@@ -242,15 +282,11 @@ impl From<RawMotion> for Motion {
 #[derive(Debug, Clone)]
 pub struct Mascot {
     pub idle: Vec<String>,
-    pub blink: Vec<String>,
 }
 
 impl From<RawMascot> for Mascot {
     fn from(m: RawMascot) -> Self {
-        Self {
-            idle: m.idle,
-            blink: m.blink,
-        }
+        Self { idle: m.idle }
     }
 }
 
