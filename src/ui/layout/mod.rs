@@ -1,10 +1,10 @@
 mod sidebar;
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Clear, Paragraph, Wrap};
+use ratatui::Frame;
 
-use crate::app::state::{AppState, NavSection, UiMode, clamp_sidebar_width, hit};
+use crate::app::state::{clamp_sidebar_width, hit, AppState, NavSection, UiMode};
 
 use super::theme::{border_style, error_style, muted_style, panel_block, Role};
 
@@ -16,7 +16,10 @@ pub fn split_shell(_frame: &mut Frame, area: Rect, state: &AppState) -> (Rect, R
     let w = clamp_sidebar_width(state.sidebar_width, area.width);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(w), Constraint::Min(crate::app::state::MIN_CONTENT_WIDTH)])
+        .constraints([
+            Constraint::Length(w),
+            Constraint::Min(crate::app::state::MIN_CONTENT_WIDTH),
+        ])
         .split(area);
 
     *state.sidebar_area.borrow_mut() = chunks[0];
@@ -126,9 +129,7 @@ pub fn filter_match(haystack: &str, query: &str) -> bool {
     if query.is_empty() {
         return true;
     }
-    haystack
-        .to_lowercase()
-        .contains(&query.to_lowercase())
+    haystack.to_lowercase().contains(&query.to_lowercase())
 }
 
 /// Return a `width`×`height` rect centered inside `area`.

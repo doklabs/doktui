@@ -1,5 +1,5 @@
-use ratatui::Frame;
 use ratatui::widgets::{Block, Gauge, Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::services::provision::ProvisionStep;
@@ -16,19 +16,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     let progress = state.provision_progress.as_ref();
     let starting = i18n.t("provision-starting");
     let (msg, pct) = progress
-        .map(|p| {
-            (
-                provision_step_label(i18n, &p.step, &p.message),
-                p.percent,
-            )
-        })
+        .map(|p| (provision_step_label(i18n, &p.step, &p.message), p.percent))
         .unwrap_or((starting, 0));
 
     let subtitle = i18n.t("provision-title");
-    frame.render_widget(
-        Paragraph::new(header_line(theme, &subtitle)),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(header_line(theme, &subtitle)), inner);
 
     let gauge = Gauge::default()
         .block(Block::default().title(msg))
@@ -60,11 +52,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
     }
 }
 
-fn provision_step_label(
-    i18n: &crate::i18n::I18n,
-    step: &ProvisionStep,
-    fallback: &str,
-) -> String {
+fn provision_step_label(i18n: &crate::i18n::I18n, step: &ProvisionStep, fallback: &str) -> String {
     let key = match step {
         ProvisionStep::DetectOs => "provision-detect-os",
         ProvisionStep::CheckDocker => "provision-check-docker",

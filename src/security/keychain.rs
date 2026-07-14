@@ -6,7 +6,9 @@ const USER: &str = "ssh-private-key";
 /// Store the SSH private key PEM in the OS keychain when available.
 pub fn store_key_pem(pem: &str) -> Result<()> {
     let entry = keyring::Entry::new(SERVICE, USER).context("failed to open keychain entry")?;
-    entry.set_password(pem).context("failed to store key in keychain")
+    entry
+        .set_password(pem)
+        .context("failed to store key in keychain")
 }
 
 /// Retrieve the SSH private key PEM from the OS keychain.

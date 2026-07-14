@@ -1,15 +1,15 @@
 use std::path::Path;
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
 
 use crate::app::state::AppState;
-use crate::ui::theme::{Role, Theme, accent_style, muted_style};
+use crate::ui::theme::{accent_style, muted_style, Role, Theme};
 
-use super::highlight::{EditorLanguage, highlight_line};
+use super::highlight::{highlight_line, EditorLanguage};
 use super::VimMode;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -166,7 +166,9 @@ fn render_statusline(
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             format!(" {status} "),
-            theme.style(Role::TextMuted).add_modifier(Modifier::REVERSED),
+            theme
+                .style(Role::TextMuted)
+                .add_modifier(Modifier::REVERSED),
         )))
         .style(theme.style_bg(Role::Surface)),
         area,

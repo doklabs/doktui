@@ -1,10 +1,10 @@
-use ratatui::Frame;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::services::ssh::ConnectionState;
-use crate::ui::components::{Status, badge};
+use crate::ui::components::{badge, Status};
 use crate::ui::layout;
 use crate::ui::theme::{header_line, muted_style, panel_block, shortcut_line, Role};
 
@@ -46,7 +46,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 Span::styled(prefix.to_string(), theme.style(Role::Text)),
                 Span::styled(format!("[{}] ", i + 1), muted_style(theme)),
                 Span::styled(format!("{} — ", s.name), theme.style(Role::Text)),
-                Span::styled(format!("{}@{}:{} ", s.user, s.host, s.port), muted_style(theme)),
+                Span::styled(
+                    format!("{}@{}:{} ", s.user, s.host, s.port),
+                    muted_style(theme),
+                ),
             ]);
             line.spans.extend(status_badge.spans);
             ListItem::new(line)
@@ -94,12 +97,16 @@ fn connection_status(state: &ConnectionState, i18n: &crate::i18n::I18n) -> (Stat
         ),
         ConnectionState::Connecting => (
             Status::Warning,
-            i18n.t_fmt("conn-connecting", &[("dot", "")]).trim().to_string(),
+            i18n.t_fmt("conn-connecting", &[("dot", "")])
+                .trim()
+                .to_string(),
         ),
         ConnectionState::Reconnecting => (Status::Warning, i18n.t("conn-reconnecting")),
         ConnectionState::Disconnected => (
             Status::Danger,
-            i18n.t_fmt("conn-offline", &[("dot", "")]).trim().to_string(),
+            i18n.t_fmt("conn-offline", &[("dot", "")])
+                .trim()
+                .to_string(),
         ),
     }
 }

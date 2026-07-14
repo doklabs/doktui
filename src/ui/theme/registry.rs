@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use ratatui::style::Color;
 use tracing::warn;
 

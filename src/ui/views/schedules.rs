@@ -1,12 +1,14 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::{AppState, CronActionKind};
 use crate::config::CronAction;
-use crate::ui::components::{Status, badge, container_status};
-use crate::ui::theme::{Role, accent_style, header_line, muted_style, panel_block, shortcut_line, text_style};
+use crate::ui::components::{badge, container_status, Status};
+use crate::ui::theme::{
+    accent_style, header_line, muted_style, panel_block, shortcut_line, text_style, Role,
+};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     if state.cron_form.is_some() {
@@ -23,14 +25,15 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(6), Constraint::Min(8)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(6),
+            Constraint::Min(8),
+        ])
         .split(inner);
 
     let subtitle = i18n.t("schedules-title");
-    frame.render_widget(
-        Paragraph::new(header_line(theme, &subtitle)),
-        chunks[0],
-    );
+    frame.render_widget(Paragraph::new(header_line(theme, &subtitle)), chunks[0]);
 
     render_restart_policies(frame, chunks[1], state);
     render_cron_jobs(frame, chunks[2], state);
@@ -90,9 +93,10 @@ fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state
             let status = container_status(&s.status);
             let short_status = s.status.split_whitespace().next().unwrap_or(&s.status);
             let badge = badge(theme, short_status, status);
-            let mut line = Line::from(vec![
-                Span::styled(format!("{} — restart: {} ", s.name, s.restart_policy), theme.style(Role::Text)),
-            ]);
+            let mut line = Line::from(vec![Span::styled(
+                format!("{} — restart: {} ", s.name, s.restart_policy),
+                theme.style(Role::Text),
+            )]);
             line.spans.extend(badge.spans);
             ListItem::new(line)
         })
@@ -144,7 +148,11 @@ fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
             let never = i18n.t("schedules-last-never");
             let last = job.last_run.as_deref().unwrap_or(&never);
             let status_badge = badge(theme, &status_label, status);
-            let prefix = if idx == state.selected_cron { "▸" } else { " " };
+            let prefix = if idx == state.selected_cron {
+                "▸"
+            } else {
+                " "
+            };
             let style = if idx == state.selected_cron {
                 accent_style(theme)
             } else {
@@ -157,7 +165,8 @@ fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
                 Span::styled(format!("{} — ", action), muted_style(theme)),
             ]);
             line.spans.extend(status_badge.spans);
-            line.spans.push(Span::styled(format!(" last: {last}"), muted_style(theme)));
+            line.spans
+                .push(Span::styled(format!(" last: {last}"), muted_style(theme)));
             ListItem::new(line).style(style)
         })
         .collect();
@@ -197,7 +206,11 @@ fn render_cron_form(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
 
     let mut y = inner.y;
     for (label, value, active) in fields {
-        let style = if active { accent_style(theme) } else { muted_style(theme) };
+        let style = if active {
+            accent_style(theme)
+        } else {
+            muted_style(theme)
+        };
         frame.render_widget(
             Paragraph::new(format!("{label}: {value}")).style(style),
             ratatui::layout::Rect {
@@ -211,7 +224,11 @@ fn render_cron_form(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
     }
 }
 
-fn centered_rect(percent_x: u16, height: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+fn centered_rect(
+    percent_x: u16,
+    height: u16,
+    area: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     let popup_width = area.width * percent_x / 100;
     let x = area.x + (area.width.saturating_sub(popup_width)) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;

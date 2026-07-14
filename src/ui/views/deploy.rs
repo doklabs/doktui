@@ -1,10 +1,10 @@
-use ratatui::Frame;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
-use crate::ui::components::{Status, badge};
-use crate::ui::theme::{Role, accent_style, header_line, muted_style, panel_block, shortcut_line};
+use crate::ui::components::{badge, Status};
+use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line, Role};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -26,7 +26,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         let count = form.compose.lines().count().to_string();
         i18n.t_fmt("deploy-compose-lines", &[("count", &count)])
     };
-    let https_status = if form.https { Status::Success } else { Status::Muted };
+    let https_status = if form.https {
+        Status::Success
+    } else {
+        Status::Muted
+    };
     let https_badge = badge(theme, &on_off, https_status);
     let mut https_line = Line::from(vec![Span::styled(
         format!("{}: ", i18n.t("deploy-field-https")),
@@ -86,10 +90,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         } else {
             muted_style(theme)
         };
-        let mut line = Line::from(vec![Span::styled(
-            format!("{label}: "),
-            style,
-        )]);
+        let mut line = Line::from(vec![Span::styled(format!("{label}: "), style)]);
         line.spans.extend(value.spans);
         frame.render_widget(
             Paragraph::new(line),

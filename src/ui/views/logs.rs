@@ -1,9 +1,11 @@
-use ratatui::Frame;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
-use crate::ui::theme::{error_style, header_line, muted_style, panel_block, shortcut_line, warning_style};
+use crate::ui::theme::{
+    error_style, header_line, muted_style, panel_block, shortcut_line, warning_style,
+};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;

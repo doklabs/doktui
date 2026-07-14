@@ -1,6 +1,6 @@
-use ratatui::Frame;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
@@ -44,9 +44,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             } else {
                 muted_style(theme)
             };
-            ListItem::new(Line::from(vec![
-                Span::styled(format!("{prefix}{label}"), style),
-            ]))
+            ListItem::new(Line::from(vec![Span::styled(
+                format!("{prefix}{label}"),
+                style,
+            )]))
         })
         .collect();
 

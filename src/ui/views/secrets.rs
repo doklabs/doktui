@@ -1,5 +1,5 @@
-use ratatui::Frame;
 use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};

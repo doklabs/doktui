@@ -1,8 +1,8 @@
-﻿use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::config::AcmeChallenge;
 
-use super::ssh::SshSession;
+use super::ssh::SshBackend;
 
 pub const NETWORK_NAME: &str = "doktui-network";
 const TRAEFIK_CONTAINER: &str = "doktui-traefik";
@@ -97,7 +97,7 @@ volumes:
 }
 
 /// Create shared network if it does not exist yet.
-pub async fn ensure_network(session: &mut SshSession) -> Result<()> {
+pub async fn ensure_network(session: &mut dyn SshBackend) -> Result<()> {
     let exists = session
         .exec(&format!(
             "docker network ls --filter name=^{NETWORK_NAME}$ --format '{{{{.Name}}}}'"
@@ -120,7 +120,7 @@ pub async fn ensure_network(session: &mut SshSession) -> Result<()> {
 pub struct TraefikProvisioner;
 
 impl TraefikProvisioner {
-    pub async fn status(session: &mut SshSession) -> Result<TraefikStatus> {
+    pub async fn status(session: &mut dyn SshBackend) -> Result<TraefikStatus> {
         let out = session
             .exec(&format!(
                 "docker ps --filter name=^{TRAEFIK_CONTAINER}$ --format '{{{{.Names}}}}'"
@@ -140,17 +140,19 @@ impl TraefikProvisioner {
         }
     }
 
-    pub async fn install(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
+    pub async fn install(session: &mut dyn SshBackend, acme: &AcmeConfig) -> Result<()> {
         Self::write_compose_and_up(session, acme).await
     }
 
     /// Recreate Traefik with the current doktui-network configuration.
-    pub async fn migrate(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
+    pub async fn migrate(session: &mut dyn SshBackend, acme: &AcmeConfig) -> Result<()> {
         Self::write_compose_and_up(session, acme).await
     }
 
-    async fn write_compose_and_up(session: &mut SshSession, acme: &AcmeConfig) -> Result<()> {
-        if acme.challenge == AcmeChallenge::DnsCloudflare && acme.dns_api_token.as_deref().unwrap_or("").is_empty() {
+    async fn write_compose_and_up(session: &mut dyn SshBackend, acme: &AcmeConfig) -> Result<()> {
+        if acme.challenge == AcmeChallenge::DnsCloudflare
+            && acme.dns_api_token.as_deref().unwrap_or("").is_empty()
+        {
             bail!(
                 "DNS-01 (Cloudflare) requires CF_DNS_API_TOKEN in Secrets ΓÇö add it under Deployments ΓåÆ Secrets"
             );
@@ -162,7 +164,10 @@ impl TraefikProvisioner {
 
         let compose = traefik_compose(acme);
         session
-            .write_remote_file(&format!("{REMOTE_DIR}/docker-compose.yml"), compose.as_bytes())
+            .write_remote_file(
+                &format!("{REMOTE_DIR}/docker-compose.yml"),
+                compose.as_bytes(),
+            )
             .await?;
 
         if acme.challenge == AcmeChallenge::DnsCloudflare {
@@ -175,7 +180,9 @@ impl TraefikProvisioner {
 
         // Drop any stopped legacy container so compose cannot resurrect old config.
         let _ = session
-            .exec(&format!("docker rm -f {TRAEFIK_CONTAINER} 2>/dev/null || true"))
+            .exec(&format!(
+                "docker rm -f {TRAEFIK_CONTAINER} 2>/dev/null || true"
+            ))
             .await;
 
         let up = session
@@ -208,7 +215,7 @@ impl TraefikProvisioner {
     }
 
     /// Ensure doktui-network exists and Traefik is attached (compose external networks can miss after prune).
-    async fn ensure_container_on_network(session: &mut SshSession) -> Result<()> {
+    async fn ensure_container_on_network(session: &mut dyn SshBackend) -> Result<()> {
         if Self::on_shared_network(session).await? {
             return Ok(());
         }
@@ -232,7 +239,7 @@ impl TraefikProvisioner {
     }
 
     /// Poll status briefly ΓÇö network attach and container Cmd can lag `compose up`.
-    async fn wait_for_healthy(session: &mut SshSession) -> Result<TraefikStatus> {
+    async fn wait_for_healthy(session: &mut dyn SshBackend) -> Result<TraefikStatus> {
         use std::time::Duration;
 
         const ATTEMPTS: u32 = 5;
@@ -249,12 +256,10 @@ impl TraefikProvisioner {
         Ok(last)
     }
 
-    async fn legacy_detail(session: &mut SshSession) -> String {
+    async fn legacy_detail(session: &mut dyn SshBackend) -> String {
         let on_network = Self::on_shared_network(session).await.unwrap_or(false);
         let provider_ok = Self::has_network_provider(session).await.unwrap_or(false);
-        let nets = Self::list_attached_networks(session)
-            .await
-            .join(", ");
+        let nets = Self::list_attached_networks(session).await.join(", ");
         let nets = if nets.is_empty() { "none".into() } else { nets };
         match (on_network, provider_ok) {
             (false, false) => format!(
@@ -266,7 +271,7 @@ impl TraefikProvisioner {
         }
     }
 
-    async fn list_attached_networks(session: &mut SshSession) -> Vec<String> {
+    async fn list_attached_networks(session: &mut dyn SshBackend) -> Vec<String> {
         let out = session
             .exec(&format!(
                 "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{{{$k}}}}|{{{{end}}}}'"
@@ -281,7 +286,7 @@ impl TraefikProvisioner {
         }
     }
 
-    async fn on_shared_network(session: &mut SshSession) -> Result<bool> {
+    async fn on_shared_network(session: &mut dyn SshBackend) -> Result<bool> {
         let out = session
             .exec(&format!(
                 "docker inspect {TRAEFIK_CONTAINER} --format '{{{{range $k, $_ := .NetworkSettings.Networks}}}}{{{{$k}}}}|{{{{end}}}}'"
@@ -294,7 +299,7 @@ impl TraefikProvisioner {
         Ok(attached)
     }
 
-    async fn has_network_provider(session: &mut SshSession) -> Result<bool> {
+    async fn has_network_provider(session: &mut dyn SshBackend) -> Result<bool> {
         let out = session
             .exec(&format!(
                 "docker inspect {TRAEFIK_CONTAINER} --format '{{{{join .Config.Cmd \"|\"}}}}'"

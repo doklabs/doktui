@@ -1,7 +1,7 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::services::ssh::ConnectionState;
@@ -39,20 +39,17 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         .unwrap_or(false);
 
     let body = if state.loading && state.metrics.is_empty() {
-        Text::from(vec![Line::from(i18n.t_fmt(
-            "monitoring-loading",
-            &[("server", &server)],
-        ))])
+        Text::from(vec![Line::from(
+            i18n.t_fmt("monitoring-loading", &[("server", &server)]),
+        )])
     } else if !connected {
-        Text::from(vec![Line::from(i18n.t_fmt(
-            "monitoring-not-connected",
-            &[("server", &server)],
-        ))])
+        Text::from(vec![Line::from(
+            i18n.t_fmt("monitoring-not-connected", &[("server", &server)]),
+        )])
     } else if state.metrics.is_empty() {
-        Text::from(vec![Line::from(i18n.t_fmt(
-            "monitoring-no-containers",
-            &[("server", &server)],
-        ))])
+        Text::from(vec![Line::from(
+            i18n.t_fmt("monitoring-no-containers", &[("server", &server)]),
+        )])
     } else {
         let col_name = i18n.t("monitoring-col-name");
         let col_cpu = i18n.t("monitoring-col-cpu");
@@ -85,7 +82,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             let mem_role = role_for_percent(mem_pct);
             let cpu_bar = health_bar(cpu_pct, 8, theme);
             let mem_bar = health_bar(mem_pct, 8, theme);
-            let history = state.metrics_history.get(&m.name).map(|v| v.as_slice()).unwrap_or(&[]);
+            let history = state
+                .metrics_history
+                .get(&m.name)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             let cpu_spark = sparkline(history, 8, theme);
 
             lines.push(Line::from(vec![Span::styled(
@@ -109,9 +110,10 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 m.mem_usage.clone(),
                 theme.style(Role::TextMuted),
             ));
-            mem_line
-                .spans
-                .push(Span::styled(format!(" {}", m.mem_percent), theme.style(mem_role)));
+            mem_line.spans.push(Span::styled(
+                format!(" {}", m.mem_percent),
+                theme.style(mem_role),
+            ));
             lines.push(mem_line);
         }
         Text::from(lines)
@@ -143,5 +145,3 @@ fn role_for_percent(pct: u8) -> Role {
         _ => Role::Danger,
     }
 }
-
-
