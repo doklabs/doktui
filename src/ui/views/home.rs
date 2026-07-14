@@ -1,13 +1,13 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::ui::anim;
 use crate::ui::components::{health_bar, metric_bar, stat};
-use crate::ui::theme::{Role, muted_style, panel_block, success_style, text_style, warning_style};
+use crate::ui::theme::{muted_style, panel_block, success_style, text_style, warning_style, Role};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -100,7 +100,14 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
             Modifier::empty()
         }),
     ));
-    stat(frame, cols[0], &i18n.t("home-stat-apps"), apps_line, Role::Success, theme);
+    stat(
+        frame,
+        cols[0],
+        &i18n.t("home-stat-apps"),
+        apps_line,
+        Role::Success,
+        theme,
+    );
 
     let cpu = state
         .metrics
@@ -108,11 +115,17 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
         .and_then(|m| m.cpu_percent.trim_end_matches('%').parse::<u8>().ok())
         .unwrap_or(0);
     let mut cpu_line = health_bar(cpu, 12, theme);
-    cpu_line.spans.push(Span::styled(
-        format!(" {cpu}%"),
-        theme.style(Role::Warning),
-    ));
-    stat(frame, cols[1], &i18n.t("home-stat-cpu"), cpu_line, Role::Warning, theme);
+    cpu_line
+        .spans
+        .push(Span::styled(format!(" {cpu}%"), theme.style(Role::Warning)));
+    stat(
+        frame,
+        cols[1],
+        &i18n.t("home-stat-cpu"),
+        cpu_line,
+        Role::Warning,
+        theme,
+    );
 
     let (connected, server_total) = state.connected_server_count();
     let healthy_pct = if server_total > 0 {
@@ -130,7 +143,14 @@ fn render_stat_row(frame: &mut Frame, area: Rect, state: &AppState, running: usi
             Modifier::empty()
         }),
     ));
-    stat(frame, cols[2], &i18n.t("home-stat-healthy"), healthy_line, Role::Accent, theme);
+    stat(
+        frame,
+        cols[2],
+        &i18n.t("home-stat-healthy"),
+        healthy_line,
+        Role::Accent,
+        theme,
+    );
 }
 
 fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -146,10 +166,7 @@ fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let title = i18n.t_fmt(
         "home-deploying-title",
-        &[
-            ("arrow", &theme.glyphs.arrow),
-            ("domain", &domain),
-        ],
+        &[("arrow", &theme.glyphs.arrow), ("domain", &domain)],
     );
     let block = panel_block(&title, theme);
     let inner = block.inner(area);
@@ -159,7 +176,10 @@ fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         Line::from(vec![
             Span::styled(bar, theme.style(Role::Primary)),
             Span::styled(
-                format!("  {}", i18n.t_fmt("home-deploy-building", &[("spin", &spin.to_string())])),
+                format!(
+                    "  {}",
+                    i18n.t_fmt("home-deploy-building", &[("spin", &spin.to_string())])
+                ),
                 muted_style(theme),
             ),
         ]),
@@ -179,10 +199,7 @@ fn render_deploy_panel(frame: &mut Frame, area: Rect, state: &AppState) {
         )),
         Line::from(vec![
             Span::styled(
-                i18n.t_fmt(
-                    "home-deploy-pulling",
-                    &[("arrow", &theme.glyphs.arrow)],
-                ),
+                i18n.t_fmt("home-deploy-pulling", &[("arrow", &theme.glyphs.arrow)]),
                 warning_style(theme),
             ),
             Span::styled(spin.to_string(), theme.style(Role::Accent)),
@@ -237,11 +254,7 @@ fn render_achievement(frame: &mut Frame, area: Rect, state: &AppState, text: &st
         Paragraph::new(vec![
             Line::from(vec![
                 Span::styled(
-                    format!(
-                        "{} {}",
-                        theme.glyphs.star,
-                        i18n.t("home-achievement-label")
-                    ),
+                    format!("{} {}", theme.glyphs.star, i18n.t("home-achievement-label")),
                     theme.style_bold(Role::Warning),
                 ),
                 Span::raw(" — "),

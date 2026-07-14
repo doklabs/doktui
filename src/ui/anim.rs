@@ -47,5 +47,3 @@ pub fn progress_bar(theme: &Theme, tick: u64, width: usize, percent: u8) -> Stri
         })
         .collect()
 }
-
-

@@ -1,7 +1,7 @@
 pub mod confirm;
 pub mod containers;
-pub mod deployments_hub;
 pub mod deploy;
+pub mod deployments_hub;
 pub mod home;
 pub mod logs;
 pub mod monitoring;

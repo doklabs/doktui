@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
-use super::model::{RawTheme, Role, parse_hex};
+use super::model::{parse_hex, RawTheme, Role};
 
 /// Validate a raw theme after inheritance merge and before color resolution.
 ///

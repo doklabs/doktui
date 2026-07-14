@@ -108,20 +108,53 @@ Downloads the matching release binary, verifies its checksum/signature, and swap
 
 ## Keyboard & Mouse
 
-The UI is fully keyboard-driven, and clickable with the mouse (buttons, nav, scroll).
+The UI is fully keyboard-driven, and clickable with the mouse (buttons, nav, scroll). Most keys are context-sensitive — the same key does different things depending on the active screen.
+
+### Global
 
 | Key | Action |
 |-----|--------|
-| `1` | Home |
-| `2` | Projects |
-| `3` | Deployments |
-| `4` | Monitoring |
-| `5` | Schedules |
-| `e` | Code editor |
-| `Ctrl+F` | Search |
-| `m` | Toggle layout mode (compact/overlay) |
-| `c` | Copy SSH public key (Welcome) |
-| `q` / `Esc` | Back / Quit |
+| `Ctrl+C` | Quit |
+| `Ctrl+F` | Toggle search |
+| `Ctrl+U` | Toggle UI mode (compact/overlay) |
+| `F6` / `Ctrl+Tab` | Toggle focus between sidebar and body |
+
+### Sidebar (when focused)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` or `↑` / `↓` | Move selection |
+| `Enter` / `l` / `→` | Open selected section |
+| `h` / `Esc` / `←` | Return focus to body |
+| `1`–`5` | Jump to Home/Projects/Deployments/Monitoring/Schedules |
+| `[` / `]` | Narrow / widen sidebar |
+
+### Body / list screens
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move selection |
+| `Enter` | Open selected item |
+| `b` / `Esc` | Back |
+| `q` | Quit |
+| `x` | Remove/delete selected item |
+| `a` | Add (server, cron job) |
+| `c` | Connect to server (Projects) or Containers (Deployments) |
+| `p` | Provision server (Projects) |
+| `s` / `S` | Stop / start container (Containers) |
+| `r` | Restart container (Containers) |
+| `l` | Logs (Containers / Deployments) |
+| `e` | Open compose editor (Deploy) |
+
+### Forms (Add server, Deploy, Secrets, Cron form)
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` or `j` / `k` | Move between fields |
+| `Enter` | Save / submit |
+| `Esc` | Cancel |
+| `Space` | Toggle HTTPS (Deploy) |
+| `Ctrl+X` | Delete last secret (Secrets) |
 
 ---
 
@@ -174,6 +207,17 @@ cargo run                  # run locally
 cargo test                 # run the test suite
 ```
 
+We also provide a `justfile` with common recipes. If you have [just](https://github.com/casey/just) installed:
+
+```sh
+just dev      # build and run
+just test     # run all tests
+just verify   # clippy + check + test
+just lint     # fmt + clippy + check + test
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the full developer workflow.
+
 For a fully static Linux build:
 
 ```sh
@@ -214,18 +258,15 @@ DokTUI follows **The Elm Architecture**: a single `AppState`, a `Message` enum, 
 | [TRAEFIK-ROUTING.md](./docs/TRAEFIK-ROUTING.md) | Routing model, label generation, shared network |
 | [LAYOUT-REVISION.md](./docs/LAYOUT-REVISION.md) | Onboarding/Home layout & responsive/compact mode |
 | [INTERACTION-AND-POLISH.md](./docs/INTERACTION-AND-POLISH.md) | Mouse support, animation timing, pixel design |
+| [PROJECT-GUIDE.md](./docs/PROJECT-GUIDE.md) | Full project handbook: setup, architecture, contribution, glossary |
+| [DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Day-to-day dev commands, common tasks, troubleshooting |
+| [TESTING.md](./docs/TESTING.md) | Unit, mocked, integration, and CI testing without a remote VPS |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. To get started:
-
-1. **Fork & branch** from `main` (`git checkout -b feat/my-thing`).
-2. **Build & test**: `cargo build && cargo test`. Please keep `cargo fmt` and `cargo clippy` clean.
-3. **Follow the architecture**: new UI reads colors via `theme.color(Role::…)` — never hardcode colors. New screens add a `Screen`/`Message` variant + a view under `src/ui/views/`.
-4. **Add tests** for services and pure logic (routing labels, backoff, cron, secrets).
-5. **Open a PR** with a clear description; reference relevant docs.
+Contributions are welcome. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) for the short version, then read [`docs/PROJECT-GUIDE.md`](docs/PROJECT-GUIDE.md) for the full handbook and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for day-to-day workflow commands.
 
 Good first issues: adding a theme (`themes/*.toml`), a new mascot variant (`src/ui/sprite.rs`), or a view for an existing service. Please open an issue to discuss larger changes first.
 

@@ -4,27 +4,30 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{
-    Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind, poll, read,
+    poll, read, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use crossterm::{ExecutableCommand, execute};
+use crossterm::{execute, ExecutableCommand};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 
-use crate::config::{AcmeChallenge, AppConfig, CronAction, CronJob, ServerConfig, bootstrap};
+use crate::config::{bootstrap, AcmeChallenge, AppConfig, CronAction, CronJob, ServerConfig};
 use crate::i18n::I18n;
 use crate::security::{hostkey, keys};
-use crate::services::secrets::SecretsManager;
 use crate::services::routing::{self, DomainSpec};
+use crate::services::secrets::SecretsManager;
 use crate::ui::{self, layout};
 
-use self::command::{CommandBus, save_new_server};
+use self::command::{save_new_server, CommandBus};
 use self::event::Message;
-use self::state::{AppState, CronActionKind, CronForm, DeployForm, HostKeyAfterAction, NavSection, Screen, ServerForm, UiMode, clamp_sidebar_width, hit};
+use self::state::{
+    clamp_sidebar_width, hit, AppState, CronActionKind, CronForm, DeployForm, HostKeyAfterAction,
+    NavSection, Screen, ServerForm, UiMode,
+};
 
 pub mod command;
 pub mod event;
@@ -75,9 +78,7 @@ pub async fn run_tui(theme_override: Option<String>) -> Result<()> {
             sidebar_width,
         );
         if locale_fallback {
-            s.status_message = Some(format!(
-                "locale `{locale_tag}` unavailable — using English"
-            ));
+            s.status_message = Some(format!("locale `{locale_tag}` unavailable — using English"));
         }
         (i18n, s)
     };
@@ -108,8 +109,7 @@ pub async fn run_tui(theme_override: Option<String>) -> Result<()> {
     loop {
         terminal.draw(|f| ui::render(f, &state))?;
 
-        let timeout = FRAME_RATE
-            .saturating_sub(last_frame.elapsed());
+        let timeout = FRAME_RATE.saturating_sub(last_frame.elapsed());
 
         if poll(timeout)? {
             while poll(Duration::ZERO)? {
@@ -243,10 +243,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         return Some(Message::ToggleErrorPanel);
     }
 
-    if state.error_message.is_some()
-        && !state.error_panel_open
-        && key.code == KeyCode::Esc
-    {
+    if state.error_message.is_some() && !state.error_panel_open && key.code == KeyCode::Esc {
         return Some(Message::ClearError);
     }
 
@@ -444,7 +441,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             KeyCode::Backspace => Some(Message::FormBackspace),
             code if is_enter(code) => Some(Message::SubmitSecretForm),
             KeyCode::Char('x')
-                if key.modifiers.contains(KeyModifiers::CONTROL) && !state.secret_keys.is_empty() =>
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !state.secret_keys.is_empty() =>
             {
                 Some(Message::DeleteSecret(
                     state.secret_keys[state.secret_keys.len() - 1].clone(),
@@ -612,12 +610,15 @@ async fn update(
             state.error_message = None;
         }
         Message::CopyPublicKey => {
-            match arboard::Clipboard::new().and_then(|mut clip| clip.set_text(state.public_key.clone()))
+            match arboard::Clipboard::new()
+                .and_then(|mut clip| clip.set_text(state.public_key.clone()))
             {
                 Ok(()) => state.status_message = Some(state.i18n.t("status-copied-key")),
                 Err(e) => push_error(
                     state,
-                    state.i18n.t_fmt("error-clipboard", &[("err", &e.to_string())]),
+                    state
+                        .i18n
+                        .t_fmt("error-clipboard", &[("err", &e.to_string())]),
                 ),
             }
         }
@@ -682,10 +683,8 @@ async fn update(
         }
         Message::SidebarNarrow => {
             let body = *state.shell_body.borrow();
-            state.sidebar_width = clamp_sidebar_width(
-                state.sidebar_width.saturating_sub(1),
-                body.width,
-            );
+            state.sidebar_width =
+                clamp_sidebar_width(state.sidebar_width.saturating_sub(1), body.width);
             persist_sidebar_width(state, config).await;
         }
         Message::SidebarWiden => {
@@ -836,10 +835,7 @@ async fn update(
             if filtered.is_empty() {
                 state.selected_server = None;
             } else if let Some(id) = state.selected_server {
-                let current = filtered
-                    .iter()
-                    .position(|s| s.id == id)
-                    .unwrap_or(0);
+                let current = filtered.iter().position(|s| s.id == id).unwrap_or(0);
                 let next = (current + 1) % filtered.len();
                 state.selected_server = Some(filtered[next].id);
             } else {
@@ -858,10 +854,7 @@ async fn update(
             if filtered.is_empty() {
                 state.selected_server = None;
             } else if let Some(id) = state.selected_server {
-                let current = filtered
-                    .iter()
-                    .position(|s| s.id == id)
-                    .unwrap_or(0);
+                let current = filtered.iter().position(|s| s.id == id).unwrap_or(0);
                 let prev = (current + filtered.len() - 1) % filtered.len();
                 state.selected_server = Some(filtered[prev].id);
             } else {
@@ -1041,10 +1034,11 @@ async fn update(
                 .unwrap_or_else(|| id.to_string());
             match result {
                 Ok(msg) => {
-                    state.status_message = Some(state.i18n.t_fmt(
-                        "cmd-schedule-result",
-                        &[("label", &label), ("msg", &msg)],
-                    ));
+                    state.status_message = Some(
+                        state
+                            .i18n
+                            .t_fmt("cmd-schedule-result", &[("label", &label), ("msg", &msg)]),
+                    );
                 }
                 Err(e) => push_error(state, e),
             }
@@ -1067,7 +1061,8 @@ async fn update(
         }
         Message::ContainerNext => {
             if !state.containers.is_empty() {
-                state.selected_container = (state.selected_container + 1).min(state.containers.len() - 1);
+                state.selected_container =
+                    (state.selected_container + 1).min(state.containers.len() - 1);
             }
         }
         Message::ContainerPrev => {
@@ -1127,42 +1122,46 @@ async fn update(
             state.pending_action = Some(state::PendingAction::RemoveContainer { name });
             state.screen = Screen::ConfirmDestructive;
         }
-        Message::ConfirmDestructive => {
-            match state.pending_action.take() {
-                Some(state::PendingAction::RemoveContainer { name }) => {
-                    state.loading = true;
-                    if let Some(id) = state.selected_server {
-                        bus.dispatch(Message::RemoveContainer { server_id: id, name });
-                    }
-                    state.screen = Screen::Containers;
+        Message::ConfirmDestructive => match state.pending_action.take() {
+            Some(state::PendingAction::RemoveContainer { name }) => {
+                state.loading = true;
+                if let Some(id) = state.selected_server {
+                    bus.dispatch(Message::RemoveContainer {
+                        server_id: id,
+                        name,
+                    });
                 }
-                Some(state::PendingAction::RemoveServer { id }) => {
-                    let name = state
-                        .servers
-                        .iter()
-                        .find(|s| s.id == id)
-                        .map(|s| s.name.clone());
-                    state.servers.retain(|s| s.id != id);
-                    {
-                        let mut cfg = config.lock().await;
-                        cfg.servers.retain(|s| s.id != id);
-                        let _ = cfg.save();
-                    }
-                    state.connection_states.retain(|s| s.server_id != id);
-                    state.metrics.clear();
-                    state.metrics_history.clear();
-                    bus.disconnect_server(Some(id));
-                    state.selected_server = None;
-                    state.go_nav(NavSection::Projects);
-                    state.selected_server = state.servers.first().map(|s| s.id);
-                    if let Some(name) = name {
-                        state.status_message =
-                            Some(state.i18n.t_fmt("status-server-removed", &[("name", &name)]));
-                    }
-                }
-                None => {}
+                state.screen = Screen::Containers;
             }
-        }
+            Some(state::PendingAction::RemoveServer { id }) => {
+                let name = state
+                    .servers
+                    .iter()
+                    .find(|s| s.id == id)
+                    .map(|s| s.name.clone());
+                state.servers.retain(|s| s.id != id);
+                {
+                    let mut cfg = config.lock().await;
+                    cfg.servers.retain(|s| s.id != id);
+                    let _ = cfg.save();
+                }
+                state.connection_states.retain(|s| s.server_id != id);
+                state.metrics.clear();
+                state.metrics_history.clear();
+                bus.disconnect_server(Some(id));
+                state.selected_server = None;
+                state.go_nav(NavSection::Projects);
+                state.selected_server = state.servers.first().map(|s| s.id);
+                if let Some(name) = name {
+                    state.status_message = Some(
+                        state
+                            .i18n
+                            .t_fmt("status-server-removed", &[("name", &name)]),
+                    );
+                }
+            }
+            None => {}
+        },
         Message::CancelDestructive => {
             state.screen = match &state.pending_action {
                 Some(state::PendingAction::RemoveServer { .. }) => Screen::ServerList,
@@ -1209,11 +1208,9 @@ async fn update(
             if let Some(prompt) = state.host_key_prompt.take() {
                 match hostkey::KnownHosts::load() {
                     Ok(mut known) => {
-                        if let Err(e) = known.trust_fingerprint(
-                            &prompt.host,
-                            prompt.port,
-                            &prompt.fingerprint,
-                        ) {
+                        if let Err(e) =
+                            known.trust_fingerprint(&prompt.host, prompt.port, &prompt.fingerprint)
+                        {
                             push_error(state, e.to_string());
                         } else {
                             state.screen = Screen::ServerList;

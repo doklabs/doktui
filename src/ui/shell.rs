@@ -1,13 +1,13 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
 
 use crate::app::state::AppState;
 use crate::ui::anim;
-use crate::ui::sprite::{MascotContext, mascot_header_glyph};
-use crate::ui::theme::{Role, connection_badge, shortcut_line};
+use crate::ui::sprite::{mascot_header_glyph, MascotContext};
+use crate::ui::theme::{connection_badge, shortcut_line, Role};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -39,11 +39,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
         Span::styled(mascot, theme.style_bold(Role::Accent)),
         Span::raw("  "),
         Span::styled(
-            format!(
-                "{} · {}",
-                i18n.t("brand-name"),
-                i18n.t("brand-subtitle")
-            ),
+            format!("{} · {}", i18n.t("brand-name"), i18n.t("brand-subtitle")),
             theme.style_bold(Role::Text),
         ),
     ]);

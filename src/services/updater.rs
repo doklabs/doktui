@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use semver::Version;
 use serde::Deserialize;
 
@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use minisign_verify::{PublicKey, Signature};
 
-use crate::config::{InstallMethod, read_install_marker};
+use crate::config::{read_install_marker, InstallMethod};
 
 const GITHUB_RELEASES: &str = "https://api.github.com/repos/doklabs/doktui/releases/latest";
 
@@ -56,9 +56,7 @@ impl Updater {
     pub async fn self_update(current: &str) -> Result<()> {
         let method = read_install_marker();
         if let Some(hint) = Self::package_manager_hint(method) {
-            bail!(
-                "DokTUI was installed via a package manager.\nUpdate with: {hint}"
-            );
+            bail!("DokTUI was installed via a package manager.\nUpdate with: {hint}");
         }
 
         let Some(release) = fetch_latest_release().await? else {
@@ -159,7 +157,11 @@ async fn fetch_latest_release() -> Result<Option<GitHubRelease>> {
         bail!("release check failed: HTTP {}", resp.status());
     }
 
-    Ok(Some(resp.json().await.context("failed to parse release metadata")?))
+    Ok(Some(
+        resp.json()
+            .await
+            .context("failed to parse release metadata")?,
+    ))
 }
 
 async fn download_bytes(url: &str) -> Result<Vec<u8>> {
@@ -178,8 +180,7 @@ async fn download_bytes(url: &str) -> Result<Vec<u8>> {
 }
 
 async fn download_text(url: &str) -> Result<String> {
-    String::from_utf8(download_bytes(url).await?)
-        .context("release metadata is not valid UTF-8")
+    String::from_utf8(download_bytes(url).await?).context("release metadata is not valid UTF-8")
 }
 
 fn release_target_triple() -> String {
@@ -237,7 +238,10 @@ fn swap_binary(bytes: &[u8]) -> Result<()> {
 /// Verify SHA-256 checksum of a release artifact.
 pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
     let digest = Sha256::digest(bytes);
-    let hex = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let hex = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     if hex.eq_ignore_ascii_case(expected_hex.trim()) {
         Ok(())
     } else {

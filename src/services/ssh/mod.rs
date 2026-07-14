@@ -26,6 +26,7 @@ pub struct SshStatus {
     pub message: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 pub struct CommandOutput {
     pub stdout: String,
     pub stderr: String,
@@ -68,8 +69,7 @@ impl Handler for ClientHandler {
 
         match action {
             hostkey::HostKeyAction::Changed { old, new } => {
-                self.capture.lock().expect("host key capture lock").changed =
-                    Some((old, new));
+                self.capture.lock().expect("host key capture lock").changed = Some((old, new));
                 Ok(false)
             }
             hostkey::HostKeyAction::AcceptNew if self.trust_new => {
@@ -113,7 +113,8 @@ impl SshSession {
         let handler = ClientHandler {
             host: host.to_string(),
             port,
-            known: hostkey::KnownHosts::load().map_err(|e| SshConnectError::Failed(e.to_string()))?,
+            known: hostkey::KnownHosts::load()
+                .map_err(|e| SshConnectError::Failed(e.to_string()))?,
             trust_new: trust_new_host,
             capture: capture.clone(),
         };
@@ -123,9 +124,12 @@ impl SshSession {
             .map_err(|e| map_connect_error(&capture, e))?;
 
         let auth_ok = session
-            .authenticate_publickey(user, Arc::new(keys::load_private_key().map_err(|e| {
-                SshConnectError::Failed(e.to_string())
-            })?))
+            .authenticate_publickey(
+                user,
+                Arc::new(
+                    keys::load_private_key().map_err(|e| SshConnectError::Failed(e.to_string()))?,
+                ),
+            )
             .await
             .map_err(|e| map_connect_error(&capture, e))?;
 
@@ -141,14 +145,37 @@ impl SshSession {
         })
     }
 
-    pub async fn exec(&mut self, command: &str) -> Result<CommandOutput> {
+    pub async fn disconnect(&mut self) -> Result<()> {
+        self.handle
+            .disconnect(Disconnect::ByApplication, "", "English")
+            .await?;
+        Ok(())
+    }
+}
+
+/// Async backend for executing remote commands and uploading files.
+///
+/// `SshSession` is the real implementation. Tests can implement a mock backend
+/// that records commands and returns scripted output, removing the need for a
+/// real SSH connection.
+#[async_trait]
+pub trait SshBackend: Send {
+    /// Execute a command on the remote host and capture stdout, stderr, and the exit code.
+    async fn exec(&mut self, command: &str) -> Result<CommandOutput>;
+
+    /// Upload `content` to `remote_path` on the remote host.
+    async fn write_remote_file(&mut self, remote_path: &str, content: &[u8]) -> Result<()>;
+}
+
+#[async_trait]
+impl SshBackend for SshSession {
+    async fn exec(&mut self, command: &str) -> Result<CommandOutput> {
         let mut channel = self.handle.channel_open_session().await?;
         channel.exec(true, command).await?;
         drain_channel(&mut channel).await
     }
 
-    /// Upload a file by streaming bytes to `cat > path` — avoids shell ARG_MAX limits.
-    pub async fn write_remote_file(&mut self, remote_path: &str, content: &[u8]) -> Result<()> {
+    async fn write_remote_file(&mut self, remote_path: &str, content: &[u8]) -> Result<()> {
         let path_escaped = remote_path.replace('\'', "'\\''");
         let cmd = format!("cat > '{path_escaped}'");
 
@@ -171,18 +198,9 @@ impl SshSession {
         }
         Ok(())
     }
-
-    pub async fn disconnect(&mut self) -> Result<()> {
-        self.handle
-            .disconnect(Disconnect::ByApplication, "", "English")
-            .await?;
-        Ok(())
-    }
 }
 
-async fn drain_channel(
-    channel: &mut russh::Channel<client::Msg>,
-) -> Result<CommandOutput> {
+async fn drain_channel(channel: &mut russh::Channel<client::Msg>) -> Result<CommandOutput> {
     let mut stdout = String::new();
     let mut stderr = String::new();
     let mut exit_code = None;
@@ -278,11 +296,7 @@ impl SshManager {
                     attempt += 1;
                 }
                 Err(SshConnectError::Failed(e)) => {
-                    self.emit(
-                        server_id,
-                        ConnectionState::Disconnected,
-                        Some(e.clone()),
-                    );
+                    self.emit(server_id, ConnectionState::Disconnected, Some(e.clone()));
                     return Err(SshConnectError::Failed(e));
                 }
             }
@@ -290,7 +304,10 @@ impl SshManager {
     }
 }
 
-fn map_connect_error(capture: &Arc<Mutex<HostKeyCapture>>, err: impl std::fmt::Display) -> SshConnectError {
+fn map_connect_error(
+    capture: &Arc<Mutex<HostKeyCapture>>,
+    err: impl std::fmt::Display,
+) -> SshConnectError {
     let cap = capture.lock().expect("host key capture lock");
     if let Some(fp) = &cap.unknown_fingerprint {
         return SshConnectError::HostKeyUnknown {

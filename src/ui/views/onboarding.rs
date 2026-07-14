@@ -1,16 +1,18 @@
-use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::event::Message;
 use crate::app::state::AppState;
 use crate::security::hostkey;
 use crate::ui::components::button;
 use crate::ui::layout::centered_rect;
-use crate::ui::sprite::{MascotContext, mascot_anim, mascot_bob, mascot_palette, mascot_sprite_for, render_sprite};
+use crate::ui::sprite::{
+    mascot_anim, mascot_bob, mascot_palette, mascot_sprite_for, render_sprite, MascotContext,
+};
 use crate::ui::theme::{
     accent_style, muted_style, panel_block, shortcut_hint_line, success_style, title_style,
     welcome_card_block, Role, Theme,
@@ -56,7 +58,13 @@ fn render_welcome_full(frame: &mut Frame, area: Rect, state: &AppState, theme: &
         .split(inner);
 
     render_mascot(frame, rows[0], state, theme);
-    centered_line(frame, rows[1], &state.i18n.t("brand-name"), Role::Text, theme);
+    centered_line(
+        frame,
+        rows[1],
+        &state.i18n.t("brand-name"),
+        Role::Text,
+        theme,
+    );
     centered_line(
         frame,
         rows[2],
@@ -102,7 +110,13 @@ fn render_welcome_compact(frame: &mut Frame, area: Rect, state: &AppState, theme
         ])
         .split(inner);
 
-    centered_line(frame, rows[0], &state.i18n.t("brand-tagline-short"), Role::Text, theme);
+    centered_line(
+        frame,
+        rows[0],
+        &state.i18n.t("brand-tagline-short"),
+        Role::Text,
+        theme,
+    );
     render_ssh_key_box(frame, rows[1], state, theme);
     render_stepper(frame, rows[2], state, theme);
     render_actions_compact(frame, rows[3], state, theme);
@@ -222,10 +236,7 @@ fn render_mascot(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
     let bob = mascot_bob(state.anim_tick);
     let slots = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(bob),
-            Constraint::Min(1),
-        ])
+        .constraints([Constraint::Length(bob), Constraint::Min(1)])
         .split(area);
 
     let context = MascotContext {
@@ -237,10 +248,7 @@ fn render_mascot(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
     let sprite = mascot_sprite_for(anim);
     let pal = mascot_palette(theme);
     let lines = render_sprite(sprite, &pal);
-    frame.render_widget(
-        Paragraph::new(lines).alignment(Alignment::Center),
-        slots[1],
-    );
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), slots[1]);
 }
 
 fn render_stepper(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
@@ -263,11 +271,13 @@ fn render_stepper(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
         cols[0],
     );
     frame.render_widget(
-        Paragraph::new(step("2", &i18n.t("welcome-step-docker"), Role::Accent)).alignment(Alignment::Center),
+        Paragraph::new(step("2", &i18n.t("welcome-step-docker"), Role::Accent))
+            .alignment(Alignment::Center),
         cols[1],
     );
     frame.render_widget(
-        Paragraph::new(step("3", &i18n.t("welcome-step-deploy"), Role::Success)).alignment(Alignment::Center),
+        Paragraph::new(step("3", &i18n.t("welcome-step-deploy"), Role::Success))
+            .alignment(Alignment::Center),
         cols[2],
     );
 }
@@ -309,10 +319,7 @@ fn render_ssh_key_box(frame: &mut Frame, area: Rect, state: &AppState, theme: &T
             Span::styled(fp, muted_style(theme)),
         ]),
     ];
-    frame.render_widget(
-        Paragraph::new(lines).alignment(Alignment::Center),
-        content,
-    );
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), content);
 }
 
 fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
@@ -363,11 +370,31 @@ pub fn render_add_server(frame: &mut Frame, area: ratatui::layout::Rect, state: 
 
     let form = &state.server_form;
     let fields = [
-        (i18n.t("form-name"), form.name.as_str(), form.active_field == 0),
-        (i18n.t("form-host"), form.host.as_str(), form.active_field == 1),
-        (i18n.t("form-port"), form.port.as_str(), form.active_field == 2),
-        (i18n.t("form-user"), form.user.as_str(), form.active_field == 3),
-        (i18n.t("form-acme-email"), form.acme_email.as_str(), form.active_field == 4),
+        (
+            i18n.t("form-name"),
+            form.name.as_str(),
+            form.active_field == 0,
+        ),
+        (
+            i18n.t("form-host"),
+            form.host.as_str(),
+            form.active_field == 1,
+        ),
+        (
+            i18n.t("form-port"),
+            form.port.as_str(),
+            form.active_field == 2,
+        ),
+        (
+            i18n.t("form-user"),
+            form.user.as_str(),
+            form.active_field == 3,
+        ),
+        (
+            i18n.t("form-acme-email"),
+            form.acme_email.as_str(),
+            form.active_field == 4,
+        ),
     ];
 
     let lines: Vec<ratatui::text::Line> = fields
