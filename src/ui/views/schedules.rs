@@ -1,10 +1,12 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, List, ListItem, Paragraph, Wrap};
 
 use crate::app::state::{AppState, CronActionKind};
 use crate::config::CronAction;
-use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line, text_style};
+use crate::ui::components::{Status, badge, container_status};
+use crate::ui::theme::{Role, accent_style, header_line, muted_style, panel_block, shortcut_line, text_style};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     if state.cron_form.is_some() {
@@ -37,10 +39,13 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("a", &i18n.t("schedules-shortcut-add")),
-                ("t", &i18n.t("schedules-shortcut-toggle")),
-                ("d", &i18n.t("schedules-shortcut-delete")),
                 ("j/k", &i18n.t("schedules-shortcut-select")),
+                ("a", &i18n.t("schedules-shortcut-add")),
+                ("x", &i18n.t("schedules-shortcut-delete")),
+                ("t", &i18n.t("schedules-shortcut-toggle")),
+                ("Enter", &i18n.t("shortcut-open")),
+                ("b", &i18n.t("shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {
@@ -82,14 +87,14 @@ fn render_restart_policies(frame: &mut Frame, area: ratatui::layout::Rect, state
         .schedules
         .iter()
         .map(|s| {
-            ListItem::new(i18n.t_fmt(
-                "schedules-restart-line",
-                &[
-                    ("name", &s.name),
-                    ("policy", &s.restart_policy),
-                    ("status", &s.status),
-                ],
-            ))
+            let status = container_status(&s.status);
+            let short_status = s.status.split_whitespace().next().unwrap_or(&s.status);
+            let badge = badge(theme, short_status, status);
+            let mut line = Line::from(vec![
+                Span::styled(format!("{} — restart: {} ", s.name, s.restart_policy), theme.style(Role::Text)),
+            ]);
+            line.spans.extend(badge.spans);
+            ListItem::new(line)
         })
         .collect();
     frame.render_widget(List::new(items), inner);
@@ -127,30 +132,32 @@ fn render_cron_jobs(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppS
                 }
             };
             let status = if job.enabled {
+                Status::Success
+            } else {
+                Status::Muted
+            };
+            let status_label = if job.enabled {
                 i18n.t("schedules-status-on")
             } else {
                 i18n.t("schedules-status-off")
             };
             let never = i18n.t("schedules-last-never");
             let last = job.last_run.as_deref().unwrap_or(&never);
-            let line = format!(
-                "{} {} — {} — {} [{}] last: {}",
-                if idx == state.selected_cron {
-                    "▸"
-                } else {
-                    " "
-                },
-                job.label,
-                job.expression,
-                action,
-                status,
-                last,
-            );
+            let status_badge = badge(theme, &status_label, status);
+            let prefix = if idx == state.selected_cron { "▸" } else { " " };
             let style = if idx == state.selected_cron {
                 accent_style(theme)
             } else {
                 text_style(theme)
             };
+            let mut line = Line::from(vec![
+                Span::styled(format!("{prefix} "), style),
+                Span::styled(format!("{} — ", job.label), theme.style(Role::Text)),
+                Span::styled(format!("{} — ", job.expression), muted_style(theme)),
+                Span::styled(format!("{} — ", action), muted_style(theme)),
+            ]);
+            line.spans.extend(status_badge.spans);
+            line.spans.push(Span::styled(format!(" last: {last}"), muted_style(theme)));
             ListItem::new(line).style(style)
         })
         .collect();

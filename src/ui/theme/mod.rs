@@ -1,6 +1,7 @@
 pub mod model;
 pub mod registry;
 pub mod resolve;
+pub mod validate;
 
 pub use model::{Role, Theme};
 pub use registry::ThemeRegistry;

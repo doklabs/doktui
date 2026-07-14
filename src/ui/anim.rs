@@ -48,19 +48,4 @@ pub fn progress_bar(theme: &Theme, tick: u64, width: usize, percent: u8) -> Stri
         .collect()
 }
 
-/// CPU-style bar with gradient roles via percent thresholds.
-pub fn gradient_bar(theme: &Theme, width: usize, percent: u8) -> String {
-    let width = width.max(1);
-    let filled = (width * percent as usize / 100).min(width);
-    (0..width)
-        .map(|i| {
-            if i >= filled {
-                return theme.glyphs.bar_empty.clone();
-            }
-            let p = (i * 100 / width) as u8;
-            let ch = theme.glyphs.bar_full.clone();
-            let _ = p;
-            ch
-        })
-        .collect()
-}
+

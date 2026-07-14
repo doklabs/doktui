@@ -1,0 +1,65 @@
+[meta]
+name = "paper"
+display_name = "Paper"
+author = "doklabs"
+
+# Light paper-like palette (gruvbox-light inspired)
+[palette]
+void = "#fbf1c7"
+surface = "#f2e5bc"
+panel = "#f9f5d7"
+border = "#d5c4a1"
+brown = "#af3a03"
+blue = "#076678"
+green = "#79740e"
+yellow = "#b57614"
+red = "#9d0006"
+orange = "#d65d0e"
+text = "#3c3836"
+mist = "#928374"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "brown"
+accent = "blue"
+success = "green"
+warning = "yellow"
+danger = "red"
+selection = "orange"
+cursor = "blue"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["◜", "◝", "◞", "◟"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+cross = "✗"
+warning = "!"
+info = "i"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]

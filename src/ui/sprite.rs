@@ -232,17 +232,30 @@ pub enum MascotAnim {
     Glitch,
 }
 
-pub fn mascot_anim(anim_tick: u64, theme: &Theme) -> MascotAnim {
+/// Context used to choose a mascot expression that reflects app state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MascotContext {
+    pub loading: bool,
+    pub error: bool,
+    pub success: bool,
+}
+
+pub fn mascot_anim(anim_tick: u64, theme: &Theme, context: MascotContext) -> MascotAnim {
+    if context.error {
+        return MascotAnim::Glitch;
+    }
+    if context.success {
+        return MascotAnim::Happy;
+    }
+    if context.loading {
+        return MascotAnim::Spout;
+    }
+
     if !theme.motion.enabled {
         return MascotAnim::Idle;
     }
 
-    if theme.motion.blink_every > 0 && !theme.mascot.blink.is_empty() {
-        let phase = anim_tick % theme.motion.blink_every;
-        if phase == 0 || phase == 1 {
-            return MascotAnim::Blink;
-        }
-    } else if theme.motion.blink_every > 0 {
+    if theme.motion.blink_every > 0 {
         let phase = anim_tick % theme.motion.blink_every;
         if phase == 0 || phase == 1 {
             return MascotAnim::Blink;
@@ -310,8 +323,8 @@ pub fn render_sprite(s: &Sprite, pal: &[Color]) -> Vec<Line<'static>> {
 }
 
 /// One-line mascot glyph for the app header.
-pub fn mascot_header_glyph(theme: &Theme, anim_tick: u64) -> String {
-    let sprite = mascot_sprite_for(mascot_anim(anim_tick, theme));
+pub fn mascot_header_glyph(theme: &Theme, anim_tick: u64, context: MascotContext) -> String {
+    let sprite = mascot_sprite_for(mascot_anim(anim_tick, theme, context));
     let lines = render_sprite(sprite, &mascot_palette(theme));
     lines
         .first()
@@ -341,15 +354,28 @@ mod tests {
     #[test]
     fn mascot_cycles_animations() {
         let theme = crate::ui::theme::ThemeRegistry::active("pico8");
-        assert_eq!(mascot_anim(0, &theme), MascotAnim::Blink);
-        assert_eq!(mascot_anim(5, &theme), MascotAnim::Idle);
-        assert_eq!(mascot_anim(90 * 14 + 5, &theme), MascotAnim::Spout);
+        let idle = MascotContext {
+            loading: false,
+            error: false,
+            success: false,
+        };
+        assert_eq!(mascot_anim(0, &theme, idle), MascotAnim::Blink);
+        assert_eq!(mascot_anim(5, &theme, idle), MascotAnim::Idle);
+        assert_eq!(mascot_anim(90 * 14 + 5, &theme, idle), MascotAnim::Spout);
     }
 
     #[test]
     fn header_glyph_non_empty() {
         let theme = crate::ui::theme::ThemeRegistry::active("pico8");
-        let g = mascot_header_glyph(&theme, 10);
+        let g = mascot_header_glyph(
+            &theme,
+            10,
+            MascotContext {
+                loading: false,
+                error: false,
+                success: false,
+            },
+        );
         assert!(!g.is_empty());
     }
 }

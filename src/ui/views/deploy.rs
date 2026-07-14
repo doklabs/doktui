@@ -1,8 +1,10 @@
 use ratatui::Frame;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::state::AppState;
-use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
+use crate::ui::components::{Status, badge};
+use crate::ui::theme::{Role, accent_style, header_line, muted_style, panel_block, shortcut_line};
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
@@ -24,35 +26,43 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         let count = form.compose.lines().count().to_string();
         i18n.t_fmt("deploy-compose-lines", &[("count", &count)])
     };
-    let fields: [(String, String, bool); 6] = [
+    let https_status = if form.https { Status::Success } else { Status::Muted };
+    let https_badge = badge(theme, &on_off, https_status);
+    let mut https_line = Line::from(vec![Span::styled(
+        format!("{}: ", i18n.t("deploy-field-https")),
+        theme.style(Role::Text),
+    )]);
+    https_line.spans.extend(https_badge.spans);
+
+    let fields: [(String, Line<'static>, bool); 6] = [
         (
             i18n.t("deploy-field-remote-dir"),
-            form.remote_dir.clone(),
+            Line::from(Span::raw(form.remote_dir.clone())),
             form.active_field == 0,
         ),
         (
             i18n.t("deploy-field-domain"),
-            form.domain.clone(),
+            Line::from(Span::raw(form.domain.clone())),
             form.active_field == 1,
         ),
         (
             i18n.t("deploy-field-port"),
-            form.port.clone(),
+            Line::from(Span::raw(form.port.clone())),
             form.active_field == 2,
         ),
         (
             i18n.t("deploy-field-service"),
-            form.service.clone(),
+            Line::from(Span::raw(form.service.clone())),
             form.active_field == 3,
         ),
         (
             i18n.t("deploy-field-https"),
-            on_off,
+            https_line,
             form.active_field == 4,
         ),
         (
             i18n.t("deploy-field-compose"),
-            compose_value,
+            Line::from(Span::raw(compose_value)),
             form.active_field == 5,
         ),
     ];
@@ -76,8 +86,13 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         } else {
             muted_style(theme)
         };
+        let mut line = Line::from(vec![Span::styled(
+            format!("{label}: "),
+            style,
+        )]);
+        line.spans.extend(value.spans);
         frame.render_widget(
-            Paragraph::new(format!("{label}: {value}")).style(style),
+            Paragraph::new(line),
             ratatui::layout::Rect {
                 x: inner.x,
                 y,
@@ -111,6 +126,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 ("Space", &i18n.t("deploy-shortcut-https")),
                 ("Enter", &i18n.t("deploy-shortcut-deploy")),
                 ("e", &i18n.t("deploy-shortcut-editor")),
+                ("Esc", &i18n.t("shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

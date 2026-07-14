@@ -1,0 +1,62 @@
+[meta]
+name = "gameboy"
+display_name = "Game Boy"
+author = "doklabs"
+
+# Original DMG-ish four-shade green palette
+[palette]
+void = "#0f380f"
+surface = "#306230"
+panel = "#306230"
+border = "#8bac0f"
+green_light = "#9bbc0f"
+green_mid = "#8bac0f"
+green_dark = "#306230"
+text = "#9bbc0f"
+mist = "#8bac0f"
+
+[roles]
+bg = "void"
+surface = "panel"
+border = "border"
+text = "text"
+text_muted = "mist"
+primary = "green_light"
+accent = "green_mid"
+success = "green_light"
+warning = "green_mid"
+danger = "green_mid"
+selection = "green_light"
+cursor = "green_mid"
+
+[glyphs]
+bar_full = "█"
+bar_empty = "░"
+spinner = ["◜", "◝", "◞", "◟"]
+dot_on = "●"
+dot_warn = "◐"
+dot_off = "○"
+sparkline = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+check = "✓"
+arrow = "▶"
+star = "★"
+diamond = "◆"
+cross = "✗"
+warning = "!"
+info = "i"
+
+[motion]
+spinner_period = 2
+pulse_period = 12
+blink_every = 45
+enabled = true
+
+[mascot]
+idle = [
+  "  >(')>  ",
+  " ~~dock~~ ",
+]
+blink = [
+  "  >(-)>  ",
+  " ~~dock~~ ",
+]
