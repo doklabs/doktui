@@ -5,8 +5,9 @@ use ratatui::Frame;
 use crate::app::state::AppState;
 use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
 
-const DEPLOY_MENU_ITEMS: [&str; 5] = [
+const DEPLOY_MENU_ITEMS: [&str; 6] = [
     "deploy-hub-item-deploy",
+    "deploy-hub-item-apps",
     "deploy-hub-item-containers",
     "deploy-hub-item-logs",
     "deploy-hub-item-secrets",

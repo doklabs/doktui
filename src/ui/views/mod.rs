@@ -1,3 +1,4 @@
+pub mod apps;
 pub mod confirm;
 pub mod containers;
 pub mod deploy;

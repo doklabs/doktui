@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::app::event::Message;
-use crate::config::{CronJob, EditorMode, ServerConfig, UiMode as ConfigUiMode};
+use crate::config::{
+    AppDeployment, CronJob, EditorMode, ServerConfig, UiMode as ConfigUiMode,
+};
+use crate::services::github::GitHubRepo;
 use crate::i18n::I18n;
 use crate::services::docker::{ContainerInfo, ContainerStats};
 use crate::services::provision::{ProvisionProgress, ProvisionResult};
@@ -80,6 +83,7 @@ pub enum Screen {
     Containers,
     Logs,
     Deploy,
+    Apps,
     Secrets,
     Editor,
     ConfirmDestructive,
@@ -155,8 +159,15 @@ impl Default for SecretForm {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployMode {
+    Compose,
+    GitHub,
+}
+
 #[derive(Debug, Clone)]
 pub struct DeployForm {
+    pub mode: DeployMode,
     pub remote_dir: String,
     pub domain: String,
     pub port: String,
@@ -164,11 +175,24 @@ pub struct DeployForm {
     pub https: bool,
     pub compose: String,
     pub active_field: usize,
+    /// GitHub owner (e.g. doklabs).
+    pub gh_owner: String,
+    /// GitHub repo name.
+    pub gh_repo: String,
+    pub gh_branch: String,
+    pub gh_compose_path: String,
+    pub auto_deploy: bool,
+    pub app_name: String,
+    pub github_repos: Vec<GitHubRepo>,
+    pub selected_repo: usize,
+    pub github_branches: Vec<String>,
+    pub selected_branch: usize,
 }
 
 impl Default for DeployForm {
     fn default() -> Self {
         Self {
+            mode: DeployMode::Compose,
             remote_dir: "/opt/doktui/apps/myapp".into(),
             domain: String::new(),
             port: "80".into(),
@@ -176,6 +200,47 @@ impl Default for DeployForm {
             https: true,
             compose: DEFAULT_COMPOSE.into(),
             active_field: 0,
+            gh_owner: String::new(),
+            gh_repo: String::new(),
+            gh_branch: "main".into(),
+            gh_compose_path: "docker-compose.yml".into(),
+            auto_deploy: true,
+            app_name: String::new(),
+            github_repos: Vec::new(),
+            selected_repo: 0,
+            github_branches: Vec::new(),
+            selected_branch: 0,
+        }
+    }
+}
+
+impl DeployForm {
+    pub fn field_count(&self) -> usize {
+        match self.mode {
+            DeployMode::Compose => 6,
+            DeployMode::GitHub => 10,
+        }
+    }
+
+    pub fn apply_selected_repo(&mut self) {
+        if let Some(repo) = self.github_repos.get(self.selected_repo) {
+            self.gh_owner = repo.owner.clone();
+            self.gh_repo = repo.name.clone();
+            self.gh_branch = repo.default_branch.clone();
+            if self.app_name.is_empty() {
+                self.app_name = repo.name.clone();
+            }
+            if self.remote_dir == "/opt/doktui/apps/myapp"
+                || self.remote_dir.starts_with("/opt/doktui/apps/")
+            {
+                self.remote_dir = format!("/opt/doktui/apps/{}", repo.name);
+            }
+        }
+    }
+
+    pub fn apply_selected_branch(&mut self) {
+        if let Some(b) = self.github_branches.get(self.selected_branch) {
+            self.gh_branch = b.clone();
         }
     }
 }
@@ -268,6 +333,9 @@ pub struct AppState {
     pub logs: Vec<String>,
     pub log_target: Option<String>,
     pub deploy_form: DeployForm,
+    pub apps: Vec<AppDeployment>,
+    pub selected_app: usize,
+    pub auto_deploy_poll_counter: u32,
     pub pending_action: Option<PendingAction>,
     pub onboarding_complete: bool,
     pub public_key: String,
@@ -311,6 +379,7 @@ impl AppState {
         editor_mode: EditorMode,
         config_ui_mode: ConfigUiMode,
         cron_jobs: Vec<CronJob>,
+        apps: Vec<AppDeployment>,
         theme: crate::ui::theme::Theme,
         i18n: I18n,
         sidebar_width: u16,
@@ -376,6 +445,9 @@ impl AppState {
             logs: Vec::new(),
             log_target: None,
             deploy_form: DeployForm::default(),
+            apps,
+            selected_app: 0,
+            auto_deploy_poll_counter: 0,
             pending_action: None,
             onboarding_complete,
             public_key,

@@ -91,6 +91,52 @@ pub struct ServerConfig {
     pub traefik_installed: bool,
 }
 
+fn default_compose_path() -> String {
+    "docker-compose.yml".into()
+}
+
+/// Where a deployed app's sources come from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DeploySource {
+    ComposePaste,
+    GitHub {
+        owner: String,
+        repo: String,
+        branch: String,
+        #[serde(default = "default_compose_path")]
+        compose_path: String,
+    },
+}
+
+/// Routing fields persisted with an app (maps to `DomainSpec` at deploy time).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppRouting {
+    pub service: String,
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default = "default_true")]
+    pub https: bool,
+}
+
+/// A named app deployment tracked locally and deployed over SSH.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppDeployment {
+    pub id: Uuid,
+    pub name: String,
+    pub server_id: Uuid,
+    pub source: DeploySource,
+    pub remote_dir: String,
+    #[serde(default)]
+    pub routing: Option<AppRouting>,
+    #[serde(default)]
+    pub auto_deploy: bool,
+    #[serde(default)]
+    pub last_commit_sha: Option<String>,
+}
+
 impl ServerConfig {
     pub fn new(name: String, host: String, port: u16, user: String) -> Self {
         Self {
@@ -135,6 +181,8 @@ pub struct AppConfig {
     pub onboarding_complete: bool,
     #[serde(default)]
     pub servers: Vec<ServerConfig>,
+    #[serde(default)]
+    pub apps: Vec<AppDeployment>,
 }
 
 fn default_true() -> bool {
@@ -174,6 +222,7 @@ impl Default for AppConfig {
             mouse: true,
             onboarding_complete: false,
             servers: Vec::new(),
+            apps: Vec::new(),
         }
     }
 }
@@ -210,6 +259,22 @@ impl AppConfig {
 
     pub fn server(&self, id: Uuid) -> Option<&ServerConfig> {
         self.servers.iter().find(|s| s.id == id)
+    }
+
+    pub fn app(&self, id: Uuid) -> Option<&AppDeployment> {
+        self.apps.iter().find(|a| a.id == id)
+    }
+
+    pub fn app_mut(&mut self, id: Uuid) -> Option<&mut AppDeployment> {
+        self.apps.iter_mut().find(|a| a.id == id)
+    }
+
+    pub fn upsert_app(&mut self, app: AppDeployment) {
+        if let Some(existing) = self.apps.iter_mut().find(|a| a.id == app.id) {
+            *existing = app;
+        } else {
+            self.apps.push(app);
+        }
     }
 }
 

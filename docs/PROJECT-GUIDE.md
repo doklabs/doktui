@@ -120,7 +120,7 @@ DokTUI uses a **three-layer architecture**:
 Register your SSH servers, see their connection status in real-time, and enjoy **auto-reconnect** — if your network hiccups, DokTUI reconnects automatically.
 
 ### 5.2 App Deployment
-Deploy from a Git repo, a Docker image, or a Docker Compose file. DokTUI automatically injects the correct **Traefik routing labels** so your app is accessible via your domain with HTTPS.
+Deploy from a **GitHub repo** (clone/pull over SSH + `GITHUB_TOKEN`) or a pasted Docker Compose file. Apps are persisted locally; GitHub apps can **auto-deploy** by polling commit SHAs while DokTUI is open (not a 24/7 server webhook). DokTUI injects **Traefik routing labels** so your app is reachable via your domain with HTTPS.
 
 ### 5.3 Canvas Code Editor
 A built-in text editor right in the terminal! Supports **Vim mode** and **non-Vim mode**, with syntax highlighting for YAML, TOML, ENV, Dockerfile, and JSON.

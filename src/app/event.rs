@@ -1,11 +1,22 @@
 use uuid::Uuid;
 
 use crate::app::state::{HostKeyAfterAction, NavSection};
+use crate::config::AppDeployment;
 use crate::services::docker::{ContainerInfo, ContainerStats, DeployReport, ScheduleInfo};
+use crate::services::github::GitHubRepo;
 use crate::services::provision::{ProvisionProgress, ProvisionResult};
 use crate::services::routing::DomainSpec;
 use crate::services::ssh::SshStatus;
 use crate::services::updater::UpdateNotice;
+
+/// GitHub source fields for a deploy request.
+#[derive(Debug, Clone)]
+pub struct GitHubDeployRequest {
+    pub owner: String,
+    pub repo: String,
+    pub branch: String,
+    pub compose_path: String,
+}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -22,6 +33,7 @@ pub enum Message {
     GoContainers,
     GoLogs,
     GoDeploy,
+    GoApps,
     GoSecrets,
     GoEditor,
 
@@ -99,8 +111,21 @@ pub enum Message {
         remote_dir: String,
         compose: String,
         routing: Option<DomainSpec>,
+        github: Option<GitHubDeployRequest>,
+        app_name: String,
+        auto_deploy: bool,
     },
     DeployDone(Result<DeployReport, String>),
+    RedeployApp(Uuid),
+    AppUpserted(AppDeployment),
+    LoadGitHubRepos,
+    GitHubReposLoaded(Result<Vec<GitHubRepo>, String>),
+    GitHubBranchesLoaded(Result<Vec<String>, String>),
+    ToggleDeployMode,
+    ToggleDeployAuto,
+    AppsNext,
+    AppsPrev,
+    DeleteApp(Uuid),
 
     // Container actions
     RequestRemoveContainer(String),
