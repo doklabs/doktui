@@ -44,7 +44,10 @@ fn highlight_env(line: &str, theme: &Theme) -> Line<'static> {
             Span::styled(rest.to_string(), string_style(theme)),
         ]);
     }
-    Line::from(vec![Span::styled(line.to_string(), theme.style(Role::Text))])
+    Line::from(vec![Span::styled(
+        line.to_string(),
+        theme.style(Role::Text),
+    )])
 }
 
 fn highlight_yaml(line: &str, theme: &Theme) -> Line<'static> {
@@ -70,8 +73,18 @@ fn highlight_dockerfile(line: &str, theme: &Theme) -> Line<'static> {
     }
     let upper = trimmed.to_ascii_uppercase();
     const INSTRUCTIONS: [&str; 12] = [
-        "FROM", "RUN", "CMD", "LABEL", "EXPOSE", "ENV", "ADD", "COPY", "ENTRYPOINT", "VOLUME",
-        "USER", "WORKDIR",
+        "FROM",
+        "RUN",
+        "CMD",
+        "LABEL",
+        "EXPOSE",
+        "ENV",
+        "ADD",
+        "COPY",
+        "ENTRYPOINT",
+        "VOLUME",
+        "USER",
+        "WORKDIR",
     ];
     for instr in INSTRUCTIONS {
         if upper.starts_with(instr)
@@ -108,7 +121,10 @@ fn highlight_kv(line: &str, theme: &Theme) -> Line<'static> {
         spans.push(Span::styled(rest.to_string(), theme.style(Role::Text)));
     }
     if spans.is_empty() {
-        Line::from(vec![Span::styled(line.to_string(), theme.style(Role::Text))])
+        Line::from(vec![Span::styled(
+            line.to_string(),
+            theme.style(Role::Text),
+        )])
     } else {
         Line::from(spans)
     }
@@ -131,7 +147,10 @@ fn highlight_toml(line: &str, theme: &Theme) -> Line<'static> {
     if line.starts_with('[') {
         return Line::from(vec![Span::styled(line.to_string(), keyword(theme))]);
     }
-    Line::from(vec![Span::styled(line.to_string(), theme.style(Role::Text))])
+    Line::from(vec![Span::styled(
+        line.to_string(),
+        theme.style(Role::Text),
+    )])
 }
 
 fn highlight_json(line: &str, theme: &Theme) -> Line<'static> {
@@ -149,7 +168,10 @@ fn highlight_json(line: &str, theme: &Theme) -> Line<'static> {
     {
         return Line::from(vec![Span::styled(line.to_string(), keyword(theme))]);
     }
-    Line::from(vec![Span::styled(line.to_string(), theme.style(Role::Text))])
+    Line::from(vec![Span::styled(
+        line.to_string(),
+        theme.style(Role::Text),
+    )])
 }
 
 fn comment(theme: &Theme) -> Style {

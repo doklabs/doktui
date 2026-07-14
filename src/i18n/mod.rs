@@ -61,9 +61,9 @@ impl I18n {
         let resource = FluentResource::try_new(source).map_err(|(_, errors)| {
             anyhow::anyhow!("failed to parse locale resource: {errors:?}")
         })?;
-        bundle
-            .add_resource(resource)
-            .map_err(|errors| anyhow::anyhow!("failed to add locale resource to bundle: {errors:?}"))?;
+        bundle.add_resource(resource).map_err(|errors| {
+            anyhow::anyhow!("failed to add locale resource to bundle: {errors:?}")
+        })?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(I18nInner {

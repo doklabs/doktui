@@ -64,8 +64,12 @@ impl DomainSpec {
             labels.push(format!("traefik.http.routers.{r}.tls.certresolver=le"));
             if self.is_wildcard() {
                 let base = host.trim_start_matches("*.");
-                labels.push(format!("traefik.http.routers.{r}.tls.domains[0].main={base}"));
-                labels.push(format!("traefik.http.routers.{r}.tls.domains[0].sans={host}"));
+                labels.push(format!(
+                    "traefik.http.routers.{r}.tls.domains[0].main={base}"
+                ));
+                labels.push(format!(
+                    "traefik.http.routers.{r}.tls.domains[0].sans={host}"
+                ));
             }
         }
 
@@ -245,11 +249,9 @@ networks:
         };
         let labels = spec.labels();
         assert!(labels.iter().any(|l| l.contains("Host(`app.example.com`)")));
-        assert!(
-            labels
-                .iter()
-                .any(|l| l == "traefik.http.services.app.loadbalancer.server.port=3000")
-        );
+        assert!(labels
+            .iter()
+            .any(|l| l == "traefik.http.services.app.loadbalancer.server.port=3000"));
         assert!(labels.iter().any(|l| l.contains("certresolver=le")));
     }
 
@@ -262,11 +264,10 @@ networks:
             path: Some("/api".into()),
             https: false,
         };
-        assert!(
-            spec.labels()
-                .iter()
-                .any(|l| l.contains("PathPrefix(`/api`)"))
-        );
+        assert!(spec
+            .labels()
+            .iter()
+            .any(|l| l.contains("PathPrefix(`/api`)")));
     }
 
     #[test]

@@ -117,7 +117,13 @@ fn default_dot_off() -> String {
 }
 fn default_sparkline() -> Vec<String> {
     vec![
-        "▁".into(), "▂".into(), "▃".into(), "▄".into(), "▅".into(), "▆".into(), "▇".into(),
+        "▁".into(),
+        "▂".into(),
+        "▃".into(),
+        "▄".into(),
+        "▅".into(),
+        "▆".into(),
+        "▇".into(),
         "█".into(),
     ]
 }

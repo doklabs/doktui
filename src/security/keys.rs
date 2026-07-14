@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use russh_keys::key::KeyPair;
-use russh_keys::{PublicKeyBase64, decode_secret_key, encode_pkcs8_pem, load_public_key};
+use russh_keys::{decode_secret_key, encode_pkcs8_pem, load_public_key, PublicKeyBase64};
 
 use crate::config::paths;
 use crate::security::keychain;
@@ -34,10 +34,7 @@ pub fn ensure_keypair() -> Result<()> {
     let _ = keychain::store_key_pem(&pem_str);
 
     let public = key.clone_public_key()?;
-    let pub_line = format!(
-        "ssh-ed25519 {} {KEY_COMMENT}",
-        public.public_key_base64()
-    );
+    let pub_line = format!("ssh-ed25519 {} {KEY_COMMENT}", public.public_key_base64());
     fs::write(&pub_path, pub_line)?;
 
     enforce_key_permissions(&priv_path)?;
@@ -60,7 +57,8 @@ pub fn load_private_key() -> Result<KeyPair> {
 
 pub fn load_public_key_openssh() -> Result<String> {
     let path = paths::ssh_key_pub_path()?;
-    fs::read_to_string(&path).with_context(|| format!("failed to read public key at {}", path.display()))
+    fs::read_to_string(&path)
+        .with_context(|| format!("failed to read public key at {}", path.display()))
 }
 
 pub fn public_key_fingerprint() -> Result<String> {

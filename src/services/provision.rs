@@ -1,8 +1,8 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use super::docker::DockerController;
-use super::ssh::SshSession;
-use super::traefik::{TraefikProvisioner, TraefikStatus, AcmeConfig, ensure_network};
+use super::ssh::SshBackend;
+use super::traefik::{ensure_network, AcmeConfig, TraefikProvisioner, TraefikStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvisionStep {
@@ -34,7 +34,7 @@ pub struct RemoteProvisioner;
 
 impl RemoteProvisioner {
     pub async fn run(
-        session: &mut SshSession,
+        session: &mut dyn SshBackend,
         acme: &AcmeConfig,
         progress: impl Fn(ProvisionProgress),
     ) -> Result<ProvisionResult> {
@@ -118,7 +118,7 @@ impl RemoteProvisioner {
     }
 }
 
-async fn detect_os(session: &mut SshSession) -> Result<String> {
+async fn detect_os(session: &mut dyn SshBackend) -> Result<String> {
     let out = session
         .exec("cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'")
         .await?;
@@ -130,7 +130,7 @@ async fn detect_os(session: &mut SshSession) -> Result<String> {
     }
 }
 
-async fn install_docker(session: &mut SshSession) -> Result<()> {
+async fn install_docker(session: &mut dyn SshBackend) -> Result<()> {
     let out = session
         .exec("curl -fsSL https://get.docker.com | sh")
         .await

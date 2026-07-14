@@ -25,8 +25,7 @@ impl SecretsManager {
     pub fn load_or_create() -> Result<Self> {
         paths::ensure_dirs()?;
         let key = load_or_create_master_key()?;
-        let cipher = ChaCha20Poly1305::new_from_slice(&key)
-            .context("invalid master key length")?;
+        let cipher = ChaCha20Poly1305::new_from_slice(&key).context("invalid master key length")?;
 
         let path = paths::secrets_path()?;
         let store = if path.exists() {

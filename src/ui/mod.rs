@@ -1,4 +1,3 @@
-mod views;
 pub mod anim;
 pub mod components;
 pub mod editor;
@@ -6,14 +5,15 @@ pub mod layout;
 pub mod shell;
 pub mod sprite;
 pub mod theme;
+mod views;
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
 
 use crate::app::state::{AppState, UiMode};
-use crate::ui::theme::{Role, error_style, muted_style, success_style};
+use crate::ui::theme::{error_style, muted_style, success_style, Role};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
     state.click_regions.borrow_mut().clear();
@@ -33,11 +33,13 @@ pub fn render(frame: &mut Frame, state: &AppState) {
                 Constraint::Min(3),
                 Constraint::Length(1),
                 Constraint::Length(if state.update_notice.is_some() { 1 } else { 0 }),
-                Constraint::Length(if !state.error_message.is_none() && !state.error_panel_open {
-                    3
-                } else {
-                    0
-                }),
+                Constraint::Length(
+                    if !state.error_message.is_none() && !state.error_panel_open {
+                        3
+                    } else {
+                        0
+                    },
+                ),
             ])
             .split(root);
 
@@ -57,10 +59,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         if let Some(notice) = &state.update_notice {
             let msg = state.i18n.t_fmt(
                 "status-update-available",
-                &[
-                    ("star", &theme.glyphs.star),
-                    ("version", &notice.latest),
-                ],
+                &[("star", &theme.glyphs.star), ("version", &notice.latest)],
             );
             frame.render_widget(
                 Paragraph::new(msg)

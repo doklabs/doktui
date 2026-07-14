@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use ratatui::style::Color;
 
 use super::model::{
-    GlyphSet, Mascot, Motion, RawGlyphs, RawMascot, RawMotion, RawTheme, Role, Theme, ThemeMeta,
-    parse_hex,
+    parse_hex, GlyphSet, Mascot, Motion, RawGlyphs, RawMascot, RawMotion, RawTheme, Role, Theme,
+    ThemeMeta,
 };
 
 pub fn merge_raw(base: RawTheme, over: RawTheme) -> RawTheme {
@@ -67,15 +67,18 @@ fn merge_motion(base: RawMotion, over: RawMotion) -> RawMotion {
 
 fn merge_mascot(base: RawMascot, over: RawMascot) -> RawMascot {
     RawMascot {
-        idle: if over.idle.is_empty() { base.idle } else { over.idle },
+        idle: if over.idle.is_empty() {
+            base.idle
+        } else {
+            over.idle
+        },
     }
 }
 
 fn resolve_color(value: &str, palette: &HashMap<String, String>) -> Result<Color> {
     let trimmed = value.trim();
     if trimmed.starts_with('#') {
-        return parse_hex(trimmed)
-            .with_context(|| format!("invalid hex color `{trimmed}`"));
+        return parse_hex(trimmed).with_context(|| format!("invalid hex color `{trimmed}`"));
     }
     if let Some(hex) = palette.get(trimmed) {
         return parse_hex(hex).with_context(|| format!("palette `{trimmed}` → `{hex}` invalid"));
@@ -127,8 +130,7 @@ pub fn resolve_theme(
     } else {
         raw
     };
-    super::validate::validate(&merged)
-        .context("theme validation failed")?;
+    super::validate::validate(&merged).context("theme validation failed")?;
     raw_to_theme(merged, fallback)
 }
 
