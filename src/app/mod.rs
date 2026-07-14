@@ -319,7 +319,8 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
         },
         Screen::Schedules => match key.code {
             KeyCode::Char('a') => Some(Message::OpenCronForm),
-            KeyCode::Char('d') => state
+            code if is_enter(code) => Some(Message::OpenCronForm),
+            KeyCode::Char('x') => state
                 .cron_jobs
                 .get(state.selected_cron)
                 .map(|j| Message::DeleteCronJob(j.id)),
@@ -329,6 +330,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                 .map(|j| Message::ToggleCronJob(j.id)),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::CronNext),
             KeyCode::Up | KeyCode::Char('k') => Some(Message::CronPrev),
+            KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoHome),
             KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
             _ => None,
         },
@@ -341,6 +343,12 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             KeyCode::Char('p') if state.selected_server.is_some() => {
                 state.selected_server.map(Message::ProvisionServer)
             }
+            KeyCode::Char('x') if state.selected_server.is_some() => {
+                Some(Message::RequestRemoveServer(state.selected_server.unwrap()))
+            }
+            KeyCode::Down | KeyCode::Char('j') => Some(Message::ServerNext),
+            KeyCode::Up | KeyCode::Char('k') => Some(Message::ServerPrev),
+            code if is_enter(code) => Some(Message::GoNav(NavSection::Deployments)),
             KeyCode::Char(d @ '1'..='9') => {
                 let idx = (d as u8 - b'1') as usize;
                 state
@@ -354,6 +362,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                     .nth(idx)
                     .map(|(_, s)| Message::SelectServer(s.id))
             }
+            KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
             _ => None,
         },
         Screen::Containers => {
@@ -363,7 +372,7 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                 KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
                 KeyCode::Down | KeyCode::Char('j') => Some(Message::ContainerNext),
                 KeyCode::Up | KeyCode::Char('k') => Some(Message::ContainerPrev),
-                KeyCode::Char('r') if name.is_some() && server_id.is_some() => {
+                KeyCode::Char('x') if name.is_some() && server_id.is_some() => {
                     Some(Message::RequestRemoveContainer(name.unwrap()))
                 }
                 KeyCode::Char('s') if name.is_some() && server_id.is_some() => {
@@ -378,21 +387,24 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
                         name: name.unwrap(),
                     })
                 }
-                KeyCode::Char('R') if name.is_some() && server_id.is_some() => {
+                KeyCode::Char('r') if name.is_some() && server_id.is_some() => {
                     Some(Message::RestartContainer {
                         server_id: server_id.unwrap(),
                         name: name.unwrap(),
                     })
                 }
+                KeyCode::Char('l') if name.is_some() => Some(Message::GoLogs),
+                KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
                 _ => None,
             }
         }
         Screen::Logs => match key.code {
             KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
+            KeyCode::Char(c) if c.eq_ignore_ascii_case(&'q') => Some(Message::Quit),
             _ => None,
         },
         Screen::Deploy => match key.code {
-            KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
+            KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
             KeyCode::Char('e') if state.deploy_form.active_field == 5 => Some(Message::GoEditor),
             KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
             KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
@@ -426,12 +438,14 @@ fn map_key(key: crossterm::event::KeyEvent, state: &AppState) -> Option<Message>
             _ => None,
         },
         Screen::Secrets => match key.code {
-            KeyCode::Esc | KeyCode::Char('b') => Some(Message::GoNav(NavSection::Deployments)),
+            KeyCode::Esc => Some(Message::GoNav(NavSection::Deployments)),
             KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => Some(Message::FormNextField),
             KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => Some(Message::FormPrevField),
             KeyCode::Backspace => Some(Message::FormBackspace),
             code if is_enter(code) => Some(Message::SubmitSecretForm),
-            KeyCode::Char('d') if !state.secret_keys.is_empty() => {
+            KeyCode::Char('x')
+                if key.modifiers.contains(KeyModifiers::CONTROL) && !state.secret_keys.is_empty() =>
+            {
                 Some(Message::DeleteSecret(
                     state.secret_keys[state.secret_keys.len() - 1].clone(),
                 ))
@@ -810,6 +824,54 @@ async fn update(
             }
             state.selected_server = Some(id);
         }
+        Message::ServerNext => {
+            let filtered: Vec<&crate::config::ServerConfig> = state
+                .servers
+                .iter()
+                .filter(|s| {
+                    layout::filter_match(&s.name, &state.search_query)
+                        && layout::filter_match(&s.host, &state.search_query)
+                })
+                .collect();
+            if filtered.is_empty() {
+                state.selected_server = None;
+            } else if let Some(id) = state.selected_server {
+                let current = filtered
+                    .iter()
+                    .position(|s| s.id == id)
+                    .unwrap_or(0);
+                let next = (current + 1) % filtered.len();
+                state.selected_server = Some(filtered[next].id);
+            } else {
+                state.selected_server = filtered.first().map(|s| s.id);
+            }
+        }
+        Message::ServerPrev => {
+            let filtered: Vec<&crate::config::ServerConfig> = state
+                .servers
+                .iter()
+                .filter(|s| {
+                    layout::filter_match(&s.name, &state.search_query)
+                        && layout::filter_match(&s.host, &state.search_query)
+                })
+                .collect();
+            if filtered.is_empty() {
+                state.selected_server = None;
+            } else if let Some(id) = state.selected_server {
+                let current = filtered
+                    .iter()
+                    .position(|s| s.id == id)
+                    .unwrap_or(0);
+                let prev = (current + filtered.len() - 1) % filtered.len();
+                state.selected_server = Some(filtered[prev].id);
+            } else {
+                state.selected_server = filtered.last().map(|s| s.id);
+            }
+        }
+        Message::RequestRemoveServer(id) => {
+            state.pending_action = Some(crate::app::state::PendingAction::RemoveServer { id });
+            state.screen = Screen::ConfirmDestructive;
+        }
         Message::ProvisionServer(id) => {
             state.screen = Screen::Provisioning;
             state.loading = true;
@@ -1034,6 +1096,7 @@ async fn update(
                 }
             }
             state.loading = true;
+            state.deploying = true;
             bus.deploy(server_id, remote_dir, compose, routing);
         }
         Message::ToggleDeployHttps => {
@@ -1041,6 +1104,7 @@ async fn update(
         }
         Message::DeployDone(result) => {
             state.loading = false;
+            state.deploying = false;
             match result {
                 Ok(report) => {
                     if report.all_ok() {
@@ -1064,19 +1128,47 @@ async fn update(
             state.screen = Screen::ConfirmDestructive;
         }
         Message::ConfirmDestructive => {
-            if let Some(state::PendingAction::RemoveContainer { name }) =
-                state.pending_action.take()
-            {
-                state.loading = true;
-                if let Some(id) = state.selected_server {
-                    bus.dispatch(Message::RemoveContainer { server_id: id, name });
+            match state.pending_action.take() {
+                Some(state::PendingAction::RemoveContainer { name }) => {
+                    state.loading = true;
+                    if let Some(id) = state.selected_server {
+                        bus.dispatch(Message::RemoveContainer { server_id: id, name });
+                    }
+                    state.screen = Screen::Containers;
                 }
+                Some(state::PendingAction::RemoveServer { id }) => {
+                    let name = state
+                        .servers
+                        .iter()
+                        .find(|s| s.id == id)
+                        .map(|s| s.name.clone());
+                    state.servers.retain(|s| s.id != id);
+                    {
+                        let mut cfg = config.lock().await;
+                        cfg.servers.retain(|s| s.id != id);
+                        let _ = cfg.save();
+                    }
+                    state.connection_states.retain(|s| s.server_id != id);
+                    state.metrics.clear();
+                    state.metrics_history.clear();
+                    bus.disconnect_server(Some(id));
+                    state.selected_server = None;
+                    state.go_nav(NavSection::Projects);
+                    state.selected_server = state.servers.first().map(|s| s.id);
+                    if let Some(name) = name {
+                        state.status_message =
+                            Some(state.i18n.t_fmt("status-server-removed", &[("name", &name)]));
+                    }
+                }
+                None => {}
             }
-            state.screen = Screen::Containers;
         }
         Message::CancelDestructive => {
+            state.screen = match &state.pending_action {
+                Some(state::PendingAction::RemoveServer { .. }) => Screen::ServerList,
+                _ => Screen::Containers,
+            };
             state.pending_action = None;
-            state.screen = Screen::Containers;
         }
         Message::SetStatus(s) => {
             state.status_message = Some(s);

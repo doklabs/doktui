@@ -81,6 +81,8 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
             &[
                 ("j/k", &i18n.t("deploy-hub-shortcut-nav")),
                 ("Enter", &i18n.t("deploy-hub-shortcut-open")),
+                ("b", &i18n.t("shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {

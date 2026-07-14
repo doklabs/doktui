@@ -126,6 +126,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 ("Space", &i18n.t("deploy-shortcut-https")),
                 ("Enter", &i18n.t("deploy-shortcut-deploy")),
                 ("e", &i18n.t("deploy-shortcut-editor")),
+                ("Esc", &i18n.t("shortcut-back")),
             ],
         )),
         ratatui::layout::Rect {

@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         .iter()
         .filter(|c| c.status.to_lowercase().contains("up"))
         .count();
-    let deploy_note = if state.loading {
+    let deploy_note = if state.deploying {
         i18n.t("home-deploy-running-1")
     } else {
         i18n.t("home-deploy-running-0")
@@ -61,7 +61,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
 
     render_stat_row(frame, chunks[1], state, running, app_count);
 
-    if state.loading {
+    if state.deploying {
         render_deploy_panel(frame, chunks[2], state);
     } else {
         render_overview(frame, chunks[2], state);

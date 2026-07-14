@@ -67,11 +67,14 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("1-9", &i18n.t("servers-shortcut-select")),
+                ("j/k", &i18n.t("servers-shortcut-select")),
+                ("Enter", &i18n.t("servers-shortcut-open")),
+                ("a", &i18n.t("servers-shortcut-add")),
                 ("c", &i18n.t("servers-shortcut-connect")),
                 ("p", &i18n.t("servers-shortcut-provision")),
-                ("a", &i18n.t("servers-shortcut-add")),
+                ("x", &i18n.t("servers-shortcut-remove")),
                 ("b", &i18n.t("servers-shortcut-back")),
+                ("q", &i18n.t("shortcut-quit")),
             ],
         )),
         ratatui::layout::Rect {
