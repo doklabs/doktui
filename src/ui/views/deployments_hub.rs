@@ -5,18 +5,20 @@ use ratatui::Frame;
 use crate::app::state::AppState;
 use crate::ui::theme::{accent_style, header_line, muted_style, panel_block, shortcut_line};
 
-const DEPLOY_MENU_ITEMS: [&str; 5] = [
+/// Server-scoped tools (opened from Apps with `t`). Not the top-level Apps list.
+const DEPLOY_MENU_ITEMS: [&str; 6] = [
     "deploy-hub-item-deploy",
     "deploy-hub-item-containers",
     "deploy-hub-item-logs",
     "deploy-hub-item-secrets",
+    "deploy-hub-item-git",
     "deploy-hub-item-editor",
 ];
 
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
     let i18n = &state.i18n;
-    let panel_title = format!(" {} ", i18n.t("nav-deployments"));
+    let panel_title = format!(" {} ", i18n.t("deploy-hub-panel-title"));
     let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -27,6 +29,16 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         ratatui::layout::Rect {
             x: inner.x,
             y: inner.y,
+            width: inner.width,
+            height: 1,
+        },
+    );
+
+    frame.render_widget(
+        Paragraph::new(i18n.t("deploy-hub-hint")).style(muted_style(theme)),
+        ratatui::layout::Rect {
+            x: inner.x,
+            y: inner.y + 1,
             width: inner.width,
             height: 1,
         },
@@ -55,9 +67,9 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         List::new(items),
         ratatui::layout::Rect {
             x: inner.x,
-            y: inner.y + 2,
+            y: inner.y + 3,
             width: inner.width,
-            height: inner.height.saturating_sub(4),
+            height: inner.height.saturating_sub(5),
         },
     );
 
@@ -80,9 +92,9 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
         Paragraph::new(shortcut_line(
             theme,
             &[
-                ("j/k", &i18n.t("deploy-hub-shortcut-nav")),
-                ("Enter", &i18n.t("deploy-hub-shortcut-open")),
-                ("b", &i18n.t("shortcut-back")),
+                ("↑↓", &i18n.t("deploy-hub-shortcut-nav")),
+                ("↵", &i18n.t("deploy-hub-shortcut-open")),
+                ("Esc", &i18n.t("apps-shortcut-back-list")),
                 ("q", &i18n.t("shortcut-quit")),
             ],
         )),

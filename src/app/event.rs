@@ -1,11 +1,23 @@
 use uuid::Uuid;
 
 use crate::app::state::{HostKeyAfterAction, NavSection};
+use crate::config::AppDeployment;
 use crate::services::docker::{ContainerInfo, ContainerStats, DeployReport, ScheduleInfo};
+use crate::services::github::GitHubRepo;
 use crate::services::provision::{ProvisionProgress, ProvisionResult};
 use crate::services::routing::DomainSpec;
 use crate::services::ssh::SshStatus;
 use crate::services::updater::UpdateNotice;
+
+/// GitHub source fields for a deploy request.
+#[derive(Debug, Clone)]
+pub struct GitHubDeployRequest {
+    pub account_id: Option<Uuid>,
+    pub owner: String,
+    pub repo: String,
+    pub branch: String,
+    pub compose_path: String,
+}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -19,9 +31,41 @@ pub enum Message {
     GoNav(NavSection),
     GoServerList,
     GoAddServer,
+    GoEditServer,
     GoContainers,
     GoLogs,
     GoDeploy,
+    GoApps,
+    /// Open app canvas for the selected (or given) app.
+    OpenAppCanvas,
+    /// Start Dokploy-style step-by-step create wizard.
+    NewAppCanvas,
+    WizardNext,
+    WizardPrev,
+    WizardSelectType(usize),
+    /// Finish wizard → open AppCanvas with form filled.
+    WizardFinish,
+    WizardSelectAccount(usize),
+    WizardSelectRepo(usize),
+    GoGitProviders,
+    GitConnectStart,
+    GitConnectCancel,
+    GitDeviceStarted {
+        user_code: String,
+        verification_uri: String,
+    },
+    GitConnectFailed(String),
+    GitAccountConnected(crate::config::GitAccountMeta),
+    GitDeleteAccount(Uuid),
+    /// Select git account in canvas / providers list.
+    SelectGitAccount(Uuid),
+    CanvasTabNext,
+    CanvasTabPrev,
+    CanvasSetTab(crate::app::state::AppCanvasTab),
+    /// Submit deploy from the canvas action bar / Ctrl+D.
+    CanvasDeploy,
+    /// Containers / logs / secrets / editor hub for the selected server.
+    GoAppTools,
     GoSecrets,
     GoEditor,
 
@@ -99,8 +143,26 @@ pub enum Message {
         remote_dir: String,
         compose: String,
         routing: Option<DomainSpec>,
+        github: Option<GitHubDeployRequest>,
+        app_name: String,
+        auto_deploy: bool,
     },
     DeployDone(Result<DeployReport, String>),
+    RedeployApp(Uuid),
+    AppUpserted(AppDeployment),
+    LoadGitHubRepos(Option<Uuid>),
+    GitHubReposLoaded(Result<Vec<GitHubRepo>, String>),
+    LoadGitHubBranches {
+        account_id: Option<Uuid>,
+        owner: String,
+        repo: String,
+    },
+    GitHubBranchesLoaded(Result<Vec<String>, String>),
+    ToggleDeployMode,
+    ToggleDeployAuto,
+    AppsNext,
+    AppsPrev,
+    DeleteApp(Uuid),
 
     // Container actions
     RequestRemoveContainer(String),

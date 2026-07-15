@@ -363,7 +363,12 @@ fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
 pub fn render_add_server(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
     let i18n = &state.i18n;
-    let panel_title = format!(" {} ", i18n.t("form-add-server-title"));
+    let title_key = if state.editing_server_id.is_some() {
+        "form-edit-server-title"
+    } else {
+        "form-add-server-title"
+    };
+    let panel_title = format!(" {} ", i18n.t(title_key));
     let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);

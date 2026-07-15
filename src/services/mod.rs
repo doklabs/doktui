@@ -1,5 +1,8 @@
 pub mod cron;
 pub mod docker;
+pub mod git_deploy;
+pub mod github;
+pub mod github_oauth;
 pub mod provision;
 pub mod routing;
 pub mod secrets;

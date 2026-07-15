@@ -220,6 +220,8 @@ mod tests {
             crate::config::EditorMode::Normal,
             crate::config::UiMode::Overlay,
             vec![],
+            vec![],
+            vec![],
             theme,
             i18n,
             22,
