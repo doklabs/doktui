@@ -4,18 +4,25 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::app::event::Message;
-use crate::config::{CronJob, EditorMode, ServerConfig, UiMode as ConfigUiMode};
+use crate::config::{
+    AppDeployment, CronJob, DeploySource, EditorMode, GitAccountMeta, ServerConfig,
+    UiMode as ConfigUiMode,
+};
+use crate::services::github::GitHubRepo;
 use crate::i18n::I18n;
 use crate::services::docker::{ContainerInfo, ContainerStats};
 use crate::services::provision::{ProvisionProgress, ProvisionResult};
 use crate::services::ssh::{ConnectionState, SshStatus};
 use crate::services::updater::UpdateNotice;
 
+/// Top-level sidebar sections (Dokploy-like: servers vs apps are separate).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavSection {
     Home,
-    Projects,
-    Deployments,
+    /// SSH targets (machines).
+    Servers,
+    /// Deployed applications (many per server).
+    Apps,
     Monitoring,
     Schedules,
 }
@@ -23,17 +30,17 @@ pub enum NavSection {
 impl NavSection {
     pub const ALL: [NavSection; 5] = [
         Self::Home,
-        Self::Projects,
-        Self::Deployments,
+        Self::Servers,
+        Self::Apps,
         Self::Monitoring,
         Self::Schedules,
     ];
 
     pub fn next(self) -> Self {
         match self {
-            Self::Home => Self::Projects,
-            Self::Projects => Self::Deployments,
-            Self::Deployments => Self::Monitoring,
+            Self::Home => Self::Servers,
+            Self::Servers => Self::Apps,
+            Self::Apps => Self::Monitoring,
             Self::Monitoring => Self::Schedules,
             Self::Schedules => Self::Home,
         }
@@ -42,9 +49,9 @@ impl NavSection {
     pub fn prev(self) -> Self {
         match self {
             Self::Home => Self::Schedules,
-            Self::Projects => Self::Home,
-            Self::Deployments => Self::Projects,
-            Self::Monitoring => Self::Deployments,
+            Self::Servers => Self::Home,
+            Self::Apps => Self::Servers,
+            Self::Monitoring => Self::Apps,
             Self::Schedules => Self::Monitoring,
         }
     }
@@ -52,8 +59,8 @@ impl NavSection {
     pub fn default_screen(self) -> Screen {
         match self {
             Self::Home => Screen::Home,
-            Self::Projects => Screen::ServerList,
-            Self::Deployments => Screen::DeploymentsHub,
+            Self::Servers => Screen::ServerList,
+            Self::Apps => Screen::Apps,
             Self::Monitoring => Screen::Monitoring,
             Self::Schedules => Screen::Schedules,
         }
@@ -79,10 +86,117 @@ pub enum Screen {
     ServerList,
     Containers,
     Logs,
+    /// Legacy flat deploy form — primary UX is [`Screen::AppCanvas`].
+    #[allow(dead_code)]
     Deploy,
+    Apps,
+    /// Dokploy-style per-app canvas (tabs: General / Domain / Env / Deploy / Logs).
+    AppCanvas,
+    /// Step-by-step create flow (type → identity → [account → repo] → canvas).
+    NewAppWizard,
+    /// Connected GitHub accounts (OAuth Device Flow).
+    GitProviders,
     Secrets,
     Editor,
     ConfirmDestructive,
+}
+
+/// Steps in the Dokploy-like “Create service” wizard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewAppStep {
+    /// Pick Application (GitHub) or Compose — like Create Service menu.
+    Type,
+    /// Name / app name / description — like Create Compose modal.
+    Identity,
+    /// Pick connected GitHub account (Application only).
+    Account,
+    /// Pick repository for the account (Application only).
+    Repo,
+}
+
+impl NewAppStep {
+    pub fn prev(self, is_github: bool) -> Option<Self> {
+        match self {
+            Self::Type => None,
+            Self::Identity => Some(Self::Type),
+            Self::Account => Some(Self::Identity),
+            Self::Repo => {
+                if is_github {
+                    Some(Self::Account)
+                } else {
+                    Some(Self::Identity)
+                }
+            }
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::Type => 0,
+            Self::Identity => 1,
+            Self::Account => 2,
+            Self::Repo => 3,
+        }
+    }
+}
+
+/// In-progress GitHub Device Flow UI state.
+#[derive(Debug, Clone)]
+pub struct GitDeviceFlow {
+    pub user_code: String,
+    pub verification_uri: String,
+    pub status: String,
+}
+
+/// Tabs inside the app canvas (Dokploy-inspired, TUI-sized subset).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppCanvasTab {
+    General,
+    Domain,
+    Env,
+    Deploy,
+    Logs,
+}
+
+impl AppCanvasTab {
+    pub const ALL: [AppCanvasTab; 5] = [
+        Self::General,
+        Self::Domain,
+        Self::Env,
+        Self::Deploy,
+        Self::Logs,
+    ];
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::General => Self::Domain,
+            Self::Domain => Self::Env,
+            Self::Env => Self::Deploy,
+            Self::Deploy => Self::Logs,
+            Self::Logs => Self::General,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            Self::General => Self::Logs,
+            Self::Domain => Self::General,
+            Self::Env => Self::Domain,
+            Self::Deploy => Self::Env,
+            Self::Logs => Self::Deploy,
+        }
+    }
+
+    pub fn from_char(c: char) -> Option<Self> {
+        match c.to_ascii_lowercase() {
+            'g' => Some(Self::General),
+            'd' => Some(Self::Domain),
+            'e' => Some(Self::Env),
+            'p' => Some(Self::Deploy),
+            'l' => Some(Self::Logs),
+            _ => None,
+        }
+    }
 }
 
 // Screen helpers — keep free of ui imports to avoid cycles.
@@ -155,8 +269,15 @@ impl Default for SecretForm {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployMode {
+    Compose,
+    GitHub,
+}
+
 #[derive(Debug, Clone)]
 pub struct DeployForm {
+    pub mode: DeployMode,
     pub remote_dir: String,
     pub domain: String,
     pub port: String,
@@ -164,11 +285,28 @@ pub struct DeployForm {
     pub https: bool,
     pub compose: String,
     pub active_field: usize,
+    /// GitHub owner (e.g. doklabs).
+    pub gh_owner: String,
+    /// GitHub repo name.
+    pub gh_repo: String,
+    pub gh_branch: String,
+    pub gh_compose_path: String,
+    pub auto_deploy: bool,
+    pub app_name: String,
+    /// Optional blurb from the new-app wizard (not persisted to config yet).
+    pub description: String,
+    /// Connected GitHub account for deploy (OAuth).
+    pub git_account_id: Option<Uuid>,
+    pub github_repos: Vec<GitHubRepo>,
+    pub selected_repo: usize,
+    pub github_branches: Vec<String>,
+    pub selected_branch: usize,
 }
 
 impl Default for DeployForm {
     fn default() -> Self {
         Self {
+            mode: DeployMode::Compose,
             remote_dir: "/opt/doktui/apps/myapp".into(),
             domain: String::new(),
             port: "80".into(),
@@ -176,6 +314,114 @@ impl Default for DeployForm {
             https: true,
             compose: DEFAULT_COMPOSE.into(),
             active_field: 0,
+            gh_owner: String::new(),
+            gh_repo: String::new(),
+            gh_branch: "main".into(),
+            gh_compose_path: "docker-compose.yml".into(),
+            auto_deploy: true,
+            app_name: String::new(),
+            description: String::new(),
+            git_account_id: None,
+            github_repos: Vec::new(),
+            selected_repo: 0,
+            github_branches: Vec::new(),
+            selected_branch: 0,
+        }
+    }
+}
+
+/// Slug for remote dir / app name preview (Dokploy-style app name).
+pub fn slugify_app_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for c in name.chars() {
+        let lower = c.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            out.push(lower);
+            prev_dash = false;
+        } else if (c.is_whitespace() || c == '-' || c == '_') && !prev_dash && !out.is_empty() {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
+impl DeployForm {
+    pub fn field_count(&self) -> usize {
+        match self.mode {
+            DeployMode::Compose => 6,
+            DeployMode::GitHub => 10,
+        }
+    }
+
+    /// Editable fields on the General tab of the app canvas.
+    pub fn canvas_general_field_count(&self) -> usize {
+        match self.mode {
+            DeployMode::Compose => 3, // name, remote_dir, compose
+            // name, remote_dir, account, repo, branch, compose_path, auto
+            DeployMode::GitHub => 7,
+        }
+    }
+
+    pub fn canvas_domain_field_count() -> usize {
+        4 // domain, port, service, https
+    }
+
+    pub fn load_from_app(&mut self, app: &AppDeployment) {
+        self.app_name = app.name.clone();
+        self.remote_dir = app.remote_dir.clone();
+        self.auto_deploy = app.auto_deploy;
+        match &app.source {
+            DeploySource::ComposePaste => {
+                self.mode = DeployMode::Compose;
+            }
+            DeploySource::GitHub {
+                account_id,
+                owner,
+                repo,
+                branch,
+                compose_path,
+            } => {
+                self.mode = DeployMode::GitHub;
+                self.git_account_id = *account_id;
+                self.gh_owner = owner.clone();
+                self.gh_repo = repo.clone();
+                self.gh_branch = branch.clone();
+                self.gh_compose_path = compose_path.clone();
+            }
+        }
+        if let Some(r) = &app.routing {
+            self.domain = r.host.clone();
+            self.port = r.port.to_string();
+            self.service = r.service.clone();
+            self.https = r.https;
+        }
+        self.active_field = 0;
+    }
+
+    pub fn apply_selected_repo(&mut self) {
+        if let Some(repo) = self.github_repos.get(self.selected_repo) {
+            self.gh_owner = repo.owner.clone();
+            self.gh_repo = repo.name.clone();
+            self.gh_branch = repo.default_branch.clone();
+            if self.app_name.is_empty() {
+                self.app_name = repo.name.clone();
+            }
+            if self.remote_dir == "/opt/doktui/apps/myapp"
+                || self.remote_dir.starts_with("/opt/doktui/apps/")
+            {
+                self.remote_dir = format!("/opt/doktui/apps/{}", repo.name);
+            }
+        }
+    }
+
+    pub fn apply_selected_branch(&mut self) {
+        if let Some(b) = self.github_branches.get(self.selected_branch) {
+            self.gh_branch = b.clone();
         }
     }
 }
@@ -250,6 +496,8 @@ pub struct AppState {
     pub error_message: Option<String>,
     pub update_notice: Option<UpdateNotice>,
     pub server_form: ServerForm,
+    /// When set, AddServer screen updates this server instead of creating a new one.
+    pub editing_server_id: Option<Uuid>,
     pub host_key_prompt: Option<HostKeyPrompt>,
     pub provision_progress: Option<ProvisionProgress>,
     pub provision_result: Option<ProvisionResult>,
@@ -268,6 +516,18 @@ pub struct AppState {
     pub logs: Vec<String>,
     pub log_target: Option<String>,
     pub deploy_form: DeployForm,
+    pub apps: Vec<AppDeployment>,
+    pub selected_app: usize,
+    /// When editing an existing app in the canvas; `None` = new draft.
+    pub canvas_app_id: Option<Uuid>,
+    pub canvas_tab: AppCanvasTab,
+    pub wizard_step: NewAppStep,
+    /// 0 = Compose, 1 = Application (GitHub).
+    pub wizard_type_idx: usize,
+    pub git_accounts: Vec<GitAccountMeta>,
+    pub selected_git_account: usize,
+    pub git_device: Option<GitDeviceFlow>,
+    pub auto_deploy_poll_counter: u32,
     pub pending_action: Option<PendingAction>,
     pub onboarding_complete: bool,
     pub public_key: String,
@@ -311,6 +571,8 @@ impl AppState {
         editor_mode: EditorMode,
         config_ui_mode: ConfigUiMode,
         cron_jobs: Vec<CronJob>,
+        apps: Vec<AppDeployment>,
+        git_accounts: Vec<GitAccountMeta>,
         theme: crate::ui::theme::Theme,
         i18n: I18n,
         sidebar_width: u16,
@@ -358,6 +620,7 @@ impl AppState {
             error_message: None,
             update_notice: None,
             server_form: ServerForm::default(),
+            editing_server_id: None,
             host_key_prompt: None,
             provision_progress: None,
             provision_result: None,
@@ -376,6 +639,16 @@ impl AppState {
             logs: Vec::new(),
             log_target: None,
             deploy_form: DeployForm::default(),
+            apps,
+            selected_app: 0,
+            canvas_app_id: None,
+            canvas_tab: AppCanvasTab::General,
+            wizard_step: NewAppStep::Type,
+            wizard_type_idx: 0,
+            git_accounts,
+            selected_git_account: 0,
+            git_device: None,
+            auto_deploy_poll_counter: 0,
             pending_action: None,
             onboarding_complete,
             public_key,
@@ -447,8 +720,11 @@ impl AppState {
         self.nav_section = section;
         self.screen = section.default_screen();
         self.sidebar_focused = false;
-        if section == NavSection::Deployments {
+        if section == NavSection::Apps {
             self.selected_deploy_menu = 0;
+            if self.selected_app >= self.apps.len() {
+                self.selected_app = self.apps.len().saturating_sub(1);
+            }
         }
     }
 

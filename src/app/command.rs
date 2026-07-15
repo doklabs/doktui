@@ -5,19 +5,43 @@ use anyhow::Result;
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
-use crate::config::{AppConfig, ServerConfig};
+use crate::config::{
+    AppConfig, AppDeployment, AppRouting, DeploySource, GitAccountMeta, GitProvider, ServerConfig,
+};
 use crate::i18n::I18n;
 use crate::security::hostkey;
 use crate::services::docker::DockerController;
+use crate::services::git_deploy;
+use crate::services::github;
+use crate::services::github_oauth;
 use crate::services::provision::RemoteProvisioner;
 use crate::services::routing::{self, DomainSpec};
-use crate::services::secrets::{self, SecretsManager};
+use crate::services::secrets::{self, git_account_token_key, is_git_credential_key, SecretsManager};
 use crate::services::ssh::{SshConnectError, SshManager, SshSession};
 use crate::services::traefik::{AcmeConfig, TraefikProvisioner, TraefikStatus};
 use crate::services::updater::Updater;
 
-use super::event::Message;
+use super::event::{GitHubDeployRequest, Message};
 use super::state::HostKeyAfterAction;
+
+/// Resolve OAuth token for a connected GitHub account (Device Flow). No PAT fallback.
+async fn resolve_github_token(
+    secrets: &Arc<Mutex<SecretsManager>>,
+    account_id: Option<Uuid>,
+) -> Option<String> {
+    let id = account_id?;
+    let mgr = secrets.lock().await;
+    mgr.get(&git_account_token_key(id))
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_string())
+}
+
+fn visible_secret_keys(mgr: &SecretsManager) -> Vec<String> {
+    mgr.list_keys()
+        .into_iter()
+        .filter(|k| !is_git_credential_key(k))
+        .collect()
+}
 
 async fn build_acme_config(
     config: &Arc<Mutex<AppConfig>>,
@@ -89,9 +113,29 @@ impl CommandBus {
                 remote_dir,
                 compose,
                 routing,
-            } => self.deploy(server_id, remote_dir, compose, routing),
+                github,
+                app_name,
+                auto_deploy,
+            } => self.deploy(
+                server_id,
+                remote_dir,
+                compose,
+                routing,
+                github,
+                app_name,
+                auto_deploy,
+            ), // github → gh_req param
+            Message::RedeployApp(id) => self.redeploy_app(id),
+            Message::LoadGitHubRepos(account_id) => self.load_github_repos(account_id),
+            Message::LoadGitHubBranches {
+                account_id,
+                owner,
+                repo,
+            } => self.load_github_branches(account_id, owner, repo),
+            Message::GitConnectStart => self.git_connect_start(),
+            Message::GitDeleteAccount(id) => self.git_delete_account(id),
             Message::RunCronJob(id) => self.run_cron_job(id),
-            Message::DeployDone(_) | Message::CronJobDone { .. } => {}
+            Message::DeployDone(_) | Message::CronJobDone { .. } | Message::AppUpserted(_) => {}
             _ => {}
         }
     }
@@ -222,7 +266,7 @@ impl CommandBus {
         let secrets = self.secrets.clone();
         tokio::spawn(async move {
             let guard = secrets.lock().await;
-            let keys = guard.list_keys();
+            let keys = visible_secret_keys(&guard);
             let _ = tx.send(Message::SecretsLoaded(keys));
         });
     }
@@ -238,7 +282,10 @@ impl CommandBus {
             };
             match save_result {
                 Ok(()) => {
-                    let keys = secrets.lock().await.list_keys();
+                    let keys = {
+                        let guard = secrets.lock().await;
+                        visible_secret_keys(&guard)
+                    };
                     let _ = tx.send(Message::SecretsLoaded(keys));
                     let _ = tx.send(Message::SetStatus(saved));
                 }
@@ -260,7 +307,10 @@ impl CommandBus {
             };
             match delete_result {
                 Ok(()) => {
-                    let keys = secrets.lock().await.list_keys();
+                    let keys = {
+                        let guard = secrets.lock().await;
+                        visible_secret_keys(&guard)
+                    };
                     let _ = tx.send(Message::SecretsLoaded(keys));
                     let _ = tx.send(Message::SetStatus(removed));
                 }
@@ -453,6 +503,9 @@ impl CommandBus {
         remote_dir: String,
         compose: String,
         routing: Option<DomainSpec>,
+        gh_req: Option<GitHubDeployRequest>,
+        app_name: String,
+        auto_deploy: bool,
     ) {
         let tx = self.tx.clone();
         let sessions = self.sessions.clone();
@@ -461,6 +514,16 @@ impl CommandBus {
         let connect_first = self.i18n.t("cmd-connect-before-deploy");
         let traefik_not_running = self.i18n.t("cmd-traefik-not-running");
         tokio::spawn(async move {
+            let account_id = gh_req.as_ref().and_then(|g| g.account_id);
+            let token = resolve_github_token(&secrets, account_id).await;
+            if gh_req.is_some() && token.is_none() {
+                let _ = tx.send(Message::DeployDone(Err(
+                    "Connect a GitHub account under Git Providers (browser OAuth), then pick it on the app"
+                        .into(),
+                )));
+                return;
+            }
+
             let mut guard = sessions.lock().await;
             let session = match guard.get_mut(&server_id) {
                 Some(s) => s,
@@ -493,35 +556,499 @@ impl CommandBus {
                 }
             }
 
+            let is_git = gh_req.is_some();
+            let (compose_body, compose_file, source, commit_sha) = if let Some(gh) = &gh_req {
+                if let Err(e) = git_deploy::ensure_repo(
+                    session,
+                    &remote_dir,
+                    &gh.owner,
+                    &gh.repo,
+                    &gh.branch,
+                    token.as_deref(),
+                )
+                .await
+                {
+                    let _ = tx.send(Message::DeployDone(Err(e.to_string())));
+                    return;
+                }
+                let body = match git_deploy::read_compose(session, &remote_dir, &gh.compose_path)
+                    .await
+                {
+                    Ok(b) => b,
+                    Err(e) => {
+                        let _ = tx.send(Message::DeployDone(Err(e.to_string())));
+                        return;
+                    }
+                };
+                let sha = if let Some(ref t) = token {
+                    crate::services::github::latest_commit_sha(
+                        t,
+                        &gh.owner,
+                        &gh.repo,
+                        &gh.branch,
+                    )
+                    .await
+                    .ok()
+                } else {
+                    None
+                };
+                (
+                    body,
+                    gh.compose_path.clone(),
+                    DeploySource::GitHub {
+                        account_id: gh.account_id,
+                        owner: gh.owner.clone(),
+                        repo: gh.repo.clone(),
+                        branch: gh.branch.clone(),
+                        compose_path: gh.compose_path.clone(),
+                    },
+                    sha,
+                )
+            } else {
+                (
+                    compose,
+                    "docker-compose.yml".into(),
+                    DeploySource::ComposePaste,
+                    None,
+                )
+            };
+
             let routing_ref = routing.as_ref();
             let final_compose = match routing_ref {
-                Some(spec) => match routing::inject_routing(&compose, spec) {
+                Some(spec) => match routing::inject_routing(&compose_body, spec) {
                     Ok(patched) => patched,
                     Err(e) => {
                         let _ = tx.send(Message::DeployDone(Err(e.to_string())));
                         return;
                     }
                 },
-                None => compose,
+                None => compose_body,
             };
             let env_vars: Vec<(String, String)> = {
                 let mgr = secrets.lock().await;
                 mgr.list_keys()
                     .into_iter()
-                    .filter_map(|k| mgr.get(&k).map(|v| (k, v.to_string())))
+                    .filter_map(|k| {
+                        if is_git_credential_key(&k) {
+                            return None;
+                        }
+                        mgr.get(&k).map(|v| (k, v.to_string()))
+                    })
                     .collect()
             };
-            let result = DockerController::deploy_compose(
-                session,
-                &remote_dir,
-                &final_compose,
-                &env_vars,
-                routing_ref,
-            )
-            .await
+            let result = if compose_file == "docker-compose.yml" {
+                DockerController::deploy_compose(
+                    session,
+                    &remote_dir,
+                    &final_compose,
+                    &env_vars,
+                    routing_ref,
+                )
+                .await
+            } else {
+                DockerController::deploy_compose_file(
+                    session,
+                    &remote_dir,
+                    &compose_file,
+                    &final_compose,
+                    &env_vars,
+                    routing_ref,
+                )
+                .await
+            }
             .map_err(|e| e.to_string());
+
+            if let Ok(ref report) = result {
+                let name = if app_name.trim().is_empty() {
+                    if let DeploySource::GitHub { repo, .. } = &source {
+                        repo.clone()
+                    } else {
+                        remote_dir
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or("app")
+                            .to_string()
+                    }
+                } else {
+                    app_name
+                };
+                let app = AppDeployment {
+                    id: Uuid::new_v4(),
+                    name,
+                    server_id,
+                    source,
+                    remote_dir: remote_dir.clone(),
+                    routing: routing.as_ref().map(|r| AppRouting {
+                        service: r.service.clone(),
+                        host: r.host.clone(),
+                        port: r.port,
+                        path: r.path.clone(),
+                        https: r.https,
+                    }),
+                    auto_deploy: auto_deploy && is_git,
+                    last_commit_sha: commit_sha,
+                };
+                {
+                    let mut cfg = config.lock().await;
+                    if let Some(existing) = cfg
+                        .apps
+                        .iter()
+                        .find(|a| a.server_id == server_id && a.remote_dir == remote_dir)
+                    {
+                        let mut updated = app.clone();
+                        updated.id = existing.id;
+                        cfg.upsert_app(updated.clone());
+                        let _ = cfg.save();
+                        let _ = tx.send(Message::AppUpserted(updated));
+                    } else {
+                        cfg.upsert_app(app.clone());
+                        let _ = cfg.save();
+                        let _ = tx.send(Message::AppUpserted(app));
+                    }
+                }
+                let _ = report;
+            }
+
             let _ = tx.send(Message::DeployDone(result));
         });
+    }
+
+    pub fn redeploy_app(&self, app_id: Uuid) {
+        let tx = self.tx.clone();
+        let sessions = self.sessions.clone();
+        let secrets = self.secrets.clone();
+        let config = self.config.clone();
+        tokio::spawn(async move {
+            let app = {
+                let cfg = config.lock().await;
+                cfg.app(app_id).cloned()
+            };
+            let Some(app) = app else {
+                let _ = tx.send(Message::DeployDone(Err("app not found".into())));
+                return;
+            };
+
+            let account_id = match &app.source {
+                DeploySource::GitHub { account_id, .. } => *account_id,
+                _ => None,
+            };
+            let token = resolve_github_token(&secrets, account_id).await;
+            if matches!(app.source, DeploySource::GitHub { .. }) && token.is_none() {
+                let _ = tx.send(Message::DeployDone(Err(
+                    "Connect a GitHub account under Git Providers (browser OAuth) for this app"
+                        .into(),
+                )));
+                return;
+            }
+
+            let mut guard = sessions.lock().await;
+            let session = match guard.get_mut(&app.server_id) {
+                Some(s) => s,
+                None => {
+                    let _ = tx.send(Message::DeployDone(Err(
+                        "connect to the server before redeploy".into(),
+                    )));
+                    return;
+                }
+            };
+
+            let routing = app.routing.as_ref().map(|r| DomainSpec {
+                service: r.service.clone(),
+                host: r.host.clone(),
+                port: r.port,
+                path: r.path.clone(),
+                https: r.https,
+            });
+
+            if routing.is_some() {
+                let acme = build_acme_config(&config, &secrets).await;
+                if let Ok(TraefikStatus::Legacy) = TraefikProvisioner::status(session).await {
+                    let _ = TraefikProvisioner::migrate(session, &acme).await;
+                }
+            }
+
+            let result = match &app.source {
+                DeploySource::GitHub {
+                    owner,
+                    repo,
+                    branch,
+                    compose_path,
+                    ..
+                } => {
+                    if let Err(e) = git_deploy::ensure_repo(
+                        session,
+                        &app.remote_dir,
+                        owner,
+                        repo,
+                        branch,
+                        token.as_deref(),
+                    )
+                    .await
+                    {
+                        let _ = tx.send(Message::DeployDone(Err(e.to_string())));
+                        return;
+                    }
+                    let body =
+                        match git_deploy::read_compose(session, &app.remote_dir, compose_path)
+                            .await
+                        {
+                            Ok(b) => b,
+                            Err(e) => {
+                                let _ = tx.send(Message::DeployDone(Err(e.to_string())));
+                                return;
+                            }
+                        };
+                    let final_compose = match routing.as_ref() {
+                        Some(spec) => match routing::inject_routing(&body, spec) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                let _ = tx.send(Message::DeployDone(Err(e.to_string())));
+                                return;
+                            }
+                        },
+                        None => body,
+                    };
+                    let env_vars: Vec<(String, String)> = {
+                        let mgr = secrets.lock().await;
+                        mgr.list_keys()
+                            .into_iter()
+                            .filter_map(|k| {
+                                if is_git_credential_key(&k) {
+                                    return None;
+                                }
+                                mgr.get(&k).map(|v| (k, v.to_string()))
+                            })
+                            .collect()
+                    };
+                    let deploy_result = DockerController::deploy_compose_file(
+                        session,
+                        &app.remote_dir,
+                        compose_path,
+                        &final_compose,
+                        &env_vars,
+                        routing.as_ref(),
+                    )
+                    .await
+                    .map_err(|e| e.to_string());
+
+                    if deploy_result.is_ok() {
+                        if let Some(ref t) = token {
+                            if let Ok(sha) = crate::services::github::latest_commit_sha(
+                                t, owner, repo, branch,
+                            )
+                            .await
+                            {
+                                let mut cfg = config.lock().await;
+                                if let Some(a) = cfg.app_mut(app_id) {
+                                    a.last_commit_sha = Some(sha.clone());
+                                }
+                                let _ = cfg.save();
+                                if let Some(a) = cfg.app(app_id).cloned() {
+                                    let _ = tx.send(Message::AppUpserted(a));
+                                }
+                            }
+                        }
+                    }
+                    deploy_result
+                }
+                DeploySource::ComposePaste => DockerController::redeploy_compose(
+                    session,
+                    &app.remote_dir,
+                )
+                .await
+                .map(|_| {
+                    crate::services::docker::DeployReport {
+                        lines: vec![format!("redeployed {}", app.remote_dir)],
+                        container_ok: true,
+                        route_ok: None,
+                    }
+                })
+                .map_err(|e| e.to_string()),
+            };
+
+            let _ = tx.send(Message::DeployDone(result));
+        });
+    }
+
+    pub fn load_github_repos(&self, account_id: Option<Uuid>) {
+        let tx = self.tx.clone();
+        let secrets = self.secrets.clone();
+        let config = self.config.clone();
+        tokio::spawn(async move {
+            let token = resolve_github_token(&secrets, account_id).await;
+            let Some(token) = token else {
+                let hint = {
+                    let cfg = config.lock().await;
+                    if account_id.is_some() && !cfg.has_git_account(account_id) {
+                        "GitHub account was removed — press c under Git Providers to reconnect in the browser"
+                            .into()
+                    } else if account_id
+                        .and_then(|id| cfg.git_account(id))
+                        .is_some()
+                    {
+                        "GitHub account token missing — reconnect under Git Providers (browser OAuth)"
+                            .into()
+                    } else {
+                        "Connect a GitHub account under Git Providers (opens browser / Device Flow)"
+                            .into()
+                    }
+                };
+                let _ = tx.send(Message::GitHubReposLoaded(Err(hint)));
+                return;
+            };
+            let result = github::list_repos(&token)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(Message::GitHubReposLoaded(result));
+        });
+    }
+
+    pub fn load_github_branches(
+        &self,
+        account_id: Option<Uuid>,
+        owner: String,
+        repo: String,
+    ) {
+        let tx = self.tx.clone();
+        let secrets = self.secrets.clone();
+        tokio::spawn(async move {
+            let token = resolve_github_token(&secrets, account_id).await;
+            let Some(token) = token else {
+                let _ = tx.send(Message::GitHubBranchesLoaded(Err(
+                    "Connect a GitHub account under Git Providers (browser OAuth)".into(),
+                )));
+                return;
+            };
+            let result = github::list_branches(&token, &owner, &repo)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(Message::GitHubBranchesLoaded(result));
+        });
+    }
+
+    pub fn git_connect_start(&self) {
+        let tx = self.tx.clone();
+        let config = self.config.clone();
+        let secrets = self.secrets.clone();
+        tokio::spawn(async move {
+            let client_id = {
+                let cfg = config.lock().await;
+                cfg.github_client_id()
+            };
+            let device = match github_oauth::request_device_code(&client_id).await {
+                Ok(d) => d,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let _ = tx.send(Message::GitDeviceStarted {
+                user_code: device.user_code.clone(),
+                verification_uri: device.verification_uri.clone(),
+            });
+            let _ = github_oauth::open_browser(&device.verification_uri);
+            let token = match github_oauth::wait_for_token(&client_id, &device).await {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let user = match github::fetch_user(&token).await {
+                Ok(u) => u,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let existing_id = {
+                let cfg = config.lock().await;
+                cfg.git_accounts
+                    .iter()
+                    .find(|a| a.login == user.login)
+                    .map(|a| a.id)
+            };
+            let id = existing_id.unwrap_or_else(Uuid::new_v4);
+            let label = user
+                .name
+                .clone()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| user.login.clone());
+            let account = GitAccountMeta {
+                id,
+                provider: GitProvider::GitHub,
+                login: user.login.clone(),
+                label,
+                connected_at: chrono::Utc::now().to_rfc3339(),
+            };
+            {
+                let mut mgr = secrets.lock().await;
+                if let Err(e) = mgr.set(&git_account_token_key(id), &token) {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            }
+            {
+                let mut cfg = config.lock().await;
+                cfg.upsert_git_account(account.clone());
+                let _ = cfg.save();
+            }
+            let _ = tx.send(Message::GitAccountConnected(account));
+        });
+    }
+
+    pub fn git_delete_account(&self, id: Uuid) {
+        let config = self.config.clone();
+        let secrets = self.secrets.clone();
+        tokio::spawn(async move {
+            {
+                let mut mgr = secrets.lock().await;
+                let _ = mgr.remove(&git_account_token_key(id));
+            }
+            let mut cfg = config.lock().await;
+            cfg.remove_git_account(id);
+            let _ = cfg.save();
+        });
+    }
+
+    /// Poll auto_deploy apps; returns app ids that need redeploy.
+    pub async fn poll_auto_deploy_candidates(&self) -> Vec<Uuid> {
+        let apps = {
+            let cfg = self.config.lock().await;
+            cfg.apps
+                .iter()
+                .filter(|a| a.auto_deploy)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        let sessions = self.sessions.lock().await;
+        let mut due = Vec::new();
+        for app in apps {
+            if !sessions.contains_key(&app.server_id) {
+                continue;
+            }
+            let DeploySource::GitHub {
+                account_id,
+                owner,
+                repo,
+                branch,
+                ..
+            } = &app.source
+            else {
+                continue;
+            };
+            let Some(token) = resolve_github_token(&self.secrets, *account_id).await else {
+                continue;
+            };
+            match github::latest_commit_sha(&token, owner, repo, branch).await {
+                Ok(sha) if app.last_commit_sha.as_deref() != Some(sha.as_str()) => {
+                    due.push(app.id);
+                }
+                _ => {}
+            }
+        }
+        due
     }
 
     pub fn run_cron_job(&self, job_id: Uuid) {

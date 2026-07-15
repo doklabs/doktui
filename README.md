@@ -40,7 +40,8 @@ DokTUI runs **on your machine**, not on your server. It manages remote servers o
 
 - **Server management** — register SSH servers, see live connection status, auto-reconnect on drop.
 - **One-command provisioning** — checks for Docker + Traefik and installs them remotely if missing.
-- **Deploy** — Docker Compose deploys with automatic Traefik routing (domain, port, HTTPS) — no hand-written labels. See [`docs/TRAEFIK-ROUTING.md`](./docs/TRAEFIK-ROUTING.md).
+- **Deploy** — Docker Compose paste **or GitHub repo** deploy with automatic Traefik routing (domain, port, HTTPS) — no hand-written labels. See [`docs/TRAEFIK-ROUTING.md`](./docs/TRAEFIK-ROUTING.md).
+- **Apps** — saved deployments with redeploy and optional auto-deploy (polls GitHub for new commits while DokTUI is open).
 - **Container management** — start/stop/restart/remove, live log streaming.
 - **Encrypted secrets** — per-app env/secrets, encrypted at rest.
 - **Built-in editor** — edit compose/env/config with Vim or non-Vim mode and syntax highlighting.
@@ -90,9 +91,18 @@ No Rust toolchain is required to install or run DokTUI.
 doktui
 ```
 
-1. **Register a server** — enter host, user, port, and an ACME email (for Let's Encrypt).
-2. **Provision** — DokTUI checks the server. If Docker/Traefik are missing, it installs them and creates the shared `doktui-network`.
-3. **Deploy** — go to Deployments, paste a `docker-compose.yml`, fill in domain + port + HTTPS, and deploy. DokTUI injects the Traefik routing for you.
+1. **Servers (2)** — register an SSH host (user, host, port, ACME email). Press `c` to connect, `p` to provision Docker/Traefik.
+2. **Pick TARGET** — click/select the server in the sidebar TARGET list (this is where new deploys go).
+3. **Git Providers (App tools `t` → `g`)** — Connect GitHub via OAuth Device Flow: DokTUI opens the browser, you approve, the token is stored encrypted. No personal access token / `GITHUB_TOKEN` secret.
+4. **Apps (3)** — press `n` (or Enter on empty list) for the **create wizard**. Compose: type → name → Create. Application: type → name → pick account → pick repository → Create, then the app canvas. Use a **different remote dir** for each app on the same server. Deploy from the Deploy tab or `Ctrl+D`.
+5. **Manage** — Apps lists every deployment (`Enter` opens the canvas, `t` = containers/logs/secrets/Git Providers). Redeploy with `r` on the canvas. GitHub auto-deploy polls while DokTUI is open — not a 24/7 webhook.
+
+### GitHub OAuth (Device Flow / browser)
+
+1. Create a GitHub **OAuth App** (Settings → Developer settings → OAuth Apps). Enable **Device Flow**.
+2. Set the Client ID in `config.toml` as `github_oauth_client_id = "..."`, or export `DOKTUI_GITHUB_CLIENT_ID`. No client secret is required for Device Flow.
+3. In DokTUI: App tools → **Git Providers** → **Connect GitHub** — browser opens to `github.com/login/device`; enter the one-time code and authorize.
+4. New Application wizard / canvas General: pick **Account** and **Repo** (↑↓). Apps must use a connected OAuth account.
 
 On first run, DokTUI generates a **dedicated SSH key** (shown on the Welcome screen). Add its public key to your server's `~/.ssh/authorized_keys`.
 
@@ -126,7 +136,7 @@ The UI is fully keyboard-driven, and clickable with the mouse (buttons, nav, scr
 | `j` / `k` or `↑` / `↓` | Move selection |
 | `Enter` / `l` / `→` | Open selected section |
 | `h` / `Esc` / `←` | Return focus to body |
-| `1`–`5` | Jump to Home/Projects/Deployments/Monitoring/Schedules |
+| `1`–`5` | Jump to Home / Servers / Apps / Monitoring / Schedules |
 | `[` / `]` | Narrow / widen sidebar |
 
 ### Body / list screens
@@ -139,21 +149,43 @@ The UI is fully keyboard-driven, and clickable with the mouse (buttons, nav, scr
 | `q` | Quit |
 | `x` | Remove/delete selected item |
 | `a` | Add (server, cron job) |
-| `c` | Connect to server (Projects) or Containers (Deployments) |
-| `p` | Provision server (Projects) |
-| `s` / `S` | Stop / start container (Containers) |
-| `r` | Restart container (Containers) |
-| `l` | Logs (Containers / Deployments) |
-| `e` | Open compose editor (Deploy) |
+| `c` | Connect (Servers) · or Containers (App tools) |
+| `p` | Provision server (Servers) |
+| `n` | New app wizard (Apps) |
+| `t` | Server tools: containers/logs/secrets (Apps) |
+| `s` / `S` | Stop / start container (Containers) · Secrets (canvas Env tab) |
+| `r` | Restart container (Containers) / redeploy (canvas) / load GitHub repos (General) |
+| `l` | Logs · or Logs tab (canvas, when not editing) |
+| `e` | Edit server (Servers) · or compose editor (canvas General) |
 
-### Forms (Add server, Deploy, Secrets, Cron form)
+### New app wizard
 
 | Key | Action |
 |-----|--------|
-| `Tab` / `Shift+Tab` or `j` / `k` | Move between fields |
-| `Enter` | Save / submit |
-| `Esc` | Cancel |
-| `Space` | Toggle HTTPS (Deploy) |
+| `j` / `k` or `↑` / `↓` | Choose type (Compose / Application) — type step only |
+| `Tab` / `↑` / `↓` | Move between identity fields (letters always type) |
+| `Enter` | Next step · Create on last field |
+| `Esc` | Cancel (first step) or previous step |
+
+### App canvas
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Next / previous tab (General · Domain · Env · Deploy · Logs) |
+| `g` / `d` / `e` / `p` / `l` | Jump to tab (when not typing in a field) |
+| `Ctrl+M` | Compose ↔ GitHub (while typing on General) |
+| `Ctrl+D` | Deploy |
+| `Ctrl+R` | Load GitHub repos (while typing) · `r` redeploy when not typing |
+| `Esc` | Back to Apps list |
+
+### Forms (Add server, Secrets, Cron form, canvas fields)
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` or `j` / `k` | Move between fields (canvas: field nav on General/Domain) |
+| `Enter` | Save / submit · or Deploy on canvas Deploy tab |
+| `Esc` | Cancel / back |
+| `Space` | Toggle HTTPS / auto-deploy |
 | `Ctrl+X` | Delete last secret (Secrets) |
 
 ---

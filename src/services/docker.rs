@@ -55,16 +55,48 @@ impl DockerController {
         env_vars: &[(String, String)],
         routing: Option<&DomainSpec>,
     ) -> Result<DeployReport> {
+        Self::deploy_compose_file(
+            session,
+            remote_dir,
+            "docker-compose.yml",
+            compose_content,
+            env_vars,
+            routing,
+        )
+        .await
+    }
+
+    pub async fn deploy_compose_file(
+        session: &mut dyn SshBackend,
+        remote_dir: &str,
+        compose_file: &str,
+        compose_content: &str,
+        env_vars: &[(String, String)],
+        routing: Option<&DomainSpec>,
+    ) -> Result<DeployReport> {
         session
             .exec(&format!("mkdir -p {remote_dir}"))
             .await
             .context("failed to create remote directory")?;
 
+        let compose_file = if compose_file.trim().is_empty() {
+            "docker-compose.yml"
+        } else {
+            compose_file.trim_start_matches('/')
+        };
+        let remote_compose = format!(
+            "{}/{}",
+            remote_dir.trim_end_matches('/'),
+            compose_file
+        );
+
+        // Ensure parent dirs exist for nested compose paths.
+        if let Some((parent, _)) = remote_compose.rsplit_once('/') {
+            let _ = session.exec(&format!("mkdir -p '{parent}'")).await;
+        }
+
         session
-            .write_remote_file(
-                &format!("{remote_dir}/docker-compose.yml"),
-                compose_content.as_bytes(),
-            )
+            .write_remote_file(&remote_compose, compose_content.as_bytes())
             .await
             .context("failed to upload compose file")?;
 
@@ -76,13 +108,24 @@ impl DockerController {
                 .collect::<Vec<_>>()
                 .join("\n");
             session
-                .write_remote_file(&format!("{remote_dir}/.env"), env_body.as_bytes())
+                .write_remote_file(
+                    &format!("{}/.env", remote_dir.trim_end_matches('/')),
+                    env_body.as_bytes(),
+                )
                 .await
                 .context("failed to upload .env file")?;
         }
 
+        let file_arg = if compose_file == "docker-compose.yml" {
+            String::new()
+        } else {
+            format!(" -f '{}'", compose_file.replace('\'', "'\\''"))
+        };
         let up = session
-            .exec(&format!("cd {remote_dir} && docker compose up -d"))
+            .exec(&format!(
+                "cd '{}' && docker compose{file_arg} up -d",
+                remote_dir.trim_end_matches('/').replace('\'', "'\\''")
+            ))
             .await?;
         if up.exit_code != 0 {
             bail!("docker compose up failed: {}", up.stderr.trim());
