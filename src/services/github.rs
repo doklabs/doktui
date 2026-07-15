@@ -1,9 +1,13 @@
-//! GitHub REST API client (PAT via secrets `GITHUB_TOKEN`).
+//! GitHub REST API client (OAuth Device Flow access tokens).
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
-pub const GITHUB_TOKEN_KEY: &str = "GITHUB_TOKEN";
+#[derive(Debug, Clone)]
+pub struct GitHubUser {
+    pub login: String,
+    pub name: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct GitHubRepo {
@@ -47,7 +51,7 @@ fn client(token: &str) -> Result<reqwest::Client> {
                 reqwest::header::AUTHORIZATION,
                 format!("Bearer {token}")
                     .parse()
-                    .context("invalid GITHUB_TOKEN for Authorization header")?,
+                    .context("invalid GitHub OAuth token for Authorization header")?,
             );
             h.insert(
                 reqwest::header::ACCEPT,
@@ -67,9 +71,31 @@ async fn check_response(resp: reqwest::Response) -> Result<reqwest::Response> {
     }
     let body = resp.text().await.unwrap_or_default();
     if status.as_u16() == 401 || status.as_u16() == 403 {
-        bail!("GitHub auth failed ({status}) — check GITHUB_TOKEN in Secrets");
+        bail!("GitHub auth failed ({status}) — reconnect the account under Git Providers");
     }
     bail!("GitHub API error ({status}): {}", body.trim());
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiUser {
+    login: String,
+    name: Option<String>,
+}
+
+/// Authenticated user profile.
+pub async fn fetch_user(token: &str) -> Result<GitHubUser> {
+    let client = client(token)?;
+    let resp = client
+        .get("https://api.github.com/user")
+        .send()
+        .await
+        .context("failed to reach api.github.com")?;
+    let resp = check_response(resp).await?;
+    let user: ApiUser = resp.json().await.context("invalid user JSON")?;
+    Ok(GitHubUser {
+        login: user.login,
+        name: user.name,
+    })
 }
 
 /// List repositories visible to the authenticated user (first page, up to 100).

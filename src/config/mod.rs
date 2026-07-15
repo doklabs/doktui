@@ -95,12 +95,35 @@ fn default_compose_path() -> String {
     "docker-compose.yml".into()
 }
 
+/// Connected Git provider (GitHub only for now).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GitProvider {
+    #[default]
+    GitHub,
+}
+
+/// Metadata for a connected Git account (token lives in secrets).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitAccountMeta {
+    pub id: Uuid,
+    #[serde(default)]
+    pub provider: GitProvider,
+    pub login: String,
+    pub label: String,
+    /// RFC3339 timestamp.
+    pub connected_at: String,
+}
+
 /// Where a deployed app's sources come from.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DeploySource {
     ComposePaste,
     GitHub {
+        /// Linked OAuth account (Git Providers). Required for deploy.
+        #[serde(default)]
+        account_id: Option<Uuid>,
         owner: String,
         repo: String,
         branch: String,
@@ -183,6 +206,12 @@ pub struct AppConfig {
     pub servers: Vec<ServerConfig>,
     #[serde(default)]
     pub apps: Vec<AppDeployment>,
+    /// Connected Git provider accounts (tokens in secrets).
+    #[serde(default)]
+    pub git_accounts: Vec<GitAccountMeta>,
+    /// GitHub OAuth App client ID (Device Flow). Override with `DOKTUI_GITHUB_CLIENT_ID`.
+    #[serde(default)]
+    pub github_oauth_client_id: String,
 }
 
 fn default_true() -> bool {
@@ -223,11 +252,52 @@ impl Default for AppConfig {
             onboarding_complete: false,
             servers: Vec::new(),
             apps: Vec::new(),
+            git_accounts: Vec::new(),
+            github_oauth_client_id: String::new(),
         }
     }
 }
 
 impl AppConfig {
+    /// Resolved OAuth client id: env wins, then config.
+    pub fn github_client_id(&self) -> String {
+        std::env::var("DOKTUI_GITHUB_CLIENT_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| self.github_oauth_client_id.trim().to_string())
+    }
+
+    pub fn git_account(&self, id: Uuid) -> Option<&GitAccountMeta> {
+        self.git_accounts.iter().find(|a| a.id == id)
+    }
+
+    /// True when `account_id` is unset or still listed (legacy apps may omit it).
+    pub fn has_git_account(&self, account_id: Option<Uuid>) -> bool {
+        match account_id {
+            None => true,
+            Some(id) => self.git_account(id).is_some(),
+        }
+    }
+
+    pub fn upsert_git_account(&mut self, account: GitAccountMeta) {
+        if let Some(existing) = self.git_accounts.iter_mut().find(|a| a.id == account.id) {
+            *existing = account;
+        } else if let Some(existing) = self
+            .git_accounts
+            .iter_mut()
+            .find(|a| a.provider == account.provider && a.login == account.login)
+        {
+            let id = existing.id;
+            *existing = GitAccountMeta { id, ..account };
+        } else {
+            self.git_accounts.push(account);
+        }
+    }
+
+    pub fn remove_git_account(&mut self, id: Uuid) {
+        self.git_accounts.retain(|a| a.id != id);
+    }
+
     pub fn load() -> Result<Self> {
         paths::ensure_dirs()?;
         let path = paths::config_file()?;

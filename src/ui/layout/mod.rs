@@ -187,8 +187,8 @@ pub fn nav_label(state: &AppState, section: NavSection) -> String {
     let i18n = &state.i18n;
     match section {
         NavSection::Home => i18n.t("nav-home"),
-        NavSection::Projects => i18n.t("nav-projects"),
-        NavSection::Deployments => i18n.t("nav-deployments"),
+        NavSection::Servers => i18n.t("nav-servers-section"),
+        NavSection::Apps => i18n.t("nav-apps"),
         NavSection::Monitoring => i18n.t("nav-monitoring"),
         NavSection::Schedules => i18n.t("nav-schedules"),
     }
@@ -197,8 +197,8 @@ pub fn nav_label(state: &AppState, section: NavSection) -> String {
 pub fn nav_shortcut(section: NavSection) -> char {
     match section {
         NavSection::Home => '1',
-        NavSection::Projects => '2',
-        NavSection::Deployments => '3',
+        NavSection::Servers => '2',
+        NavSection::Apps => '3',
         NavSection::Monitoring => '4',
         NavSection::Schedules => '5',
     }
@@ -207,8 +207,8 @@ pub fn nav_shortcut(section: NavSection) -> char {
 pub fn section_from_char(c: char) -> Option<NavSection> {
     match c {
         '1' => Some(NavSection::Home),
-        '2' => Some(NavSection::Projects),
-        '3' => Some(NavSection::Deployments),
+        '2' => Some(NavSection::Servers),
+        '3' => Some(NavSection::Apps),
         '4' => Some(NavSection::Monitoring),
         '5' => Some(NavSection::Schedules),
         _ => None,

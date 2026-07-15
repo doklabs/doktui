@@ -5,21 +5,43 @@ use anyhow::Result;
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
-use crate::config::{AppConfig, AppDeployment, AppRouting, DeploySource, ServerConfig};
+use crate::config::{
+    AppConfig, AppDeployment, AppRouting, DeploySource, GitAccountMeta, GitProvider, ServerConfig,
+};
 use crate::i18n::I18n;
 use crate::security::hostkey;
 use crate::services::docker::DockerController;
 use crate::services::git_deploy;
-use crate::services::github::{self, GITHUB_TOKEN_KEY};
+use crate::services::github;
+use crate::services::github_oauth;
 use crate::services::provision::RemoteProvisioner;
 use crate::services::routing::{self, DomainSpec};
-use crate::services::secrets::{self, SecretsManager};
+use crate::services::secrets::{self, git_account_token_key, is_git_credential_key, SecretsManager};
 use crate::services::ssh::{SshConnectError, SshManager, SshSession};
 use crate::services::traefik::{AcmeConfig, TraefikProvisioner, TraefikStatus};
 use crate::services::updater::Updater;
 
 use super::event::{GitHubDeployRequest, Message};
 use super::state::HostKeyAfterAction;
+
+/// Resolve OAuth token for a connected GitHub account (Device Flow). No PAT fallback.
+async fn resolve_github_token(
+    secrets: &Arc<Mutex<SecretsManager>>,
+    account_id: Option<Uuid>,
+) -> Option<String> {
+    let id = account_id?;
+    let mgr = secrets.lock().await;
+    mgr.get(&git_account_token_key(id))
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_string())
+}
+
+fn visible_secret_keys(mgr: &SecretsManager) -> Vec<String> {
+    mgr.list_keys()
+        .into_iter()
+        .filter(|k| !is_git_credential_key(k))
+        .collect()
+}
 
 async fn build_acme_config(
     config: &Arc<Mutex<AppConfig>>,
@@ -104,7 +126,14 @@ impl CommandBus {
                 auto_deploy,
             ), // github → gh_req param
             Message::RedeployApp(id) => self.redeploy_app(id),
-            Message::LoadGitHubRepos => self.load_github_repos(),
+            Message::LoadGitHubRepos(account_id) => self.load_github_repos(account_id),
+            Message::LoadGitHubBranches {
+                account_id,
+                owner,
+                repo,
+            } => self.load_github_branches(account_id, owner, repo),
+            Message::GitConnectStart => self.git_connect_start(),
+            Message::GitDeleteAccount(id) => self.git_delete_account(id),
             Message::RunCronJob(id) => self.run_cron_job(id),
             Message::DeployDone(_) | Message::CronJobDone { .. } | Message::AppUpserted(_) => {}
             _ => {}
@@ -237,7 +266,7 @@ impl CommandBus {
         let secrets = self.secrets.clone();
         tokio::spawn(async move {
             let guard = secrets.lock().await;
-            let keys = guard.list_keys();
+            let keys = visible_secret_keys(&guard);
             let _ = tx.send(Message::SecretsLoaded(keys));
         });
     }
@@ -253,7 +282,10 @@ impl CommandBus {
             };
             match save_result {
                 Ok(()) => {
-                    let keys = secrets.lock().await.list_keys();
+                    let keys = {
+                        let guard = secrets.lock().await;
+                        visible_secret_keys(&guard)
+                    };
                     let _ = tx.send(Message::SecretsLoaded(keys));
                     let _ = tx.send(Message::SetStatus(saved));
                 }
@@ -275,7 +307,10 @@ impl CommandBus {
             };
             match delete_result {
                 Ok(()) => {
-                    let keys = secrets.lock().await.list_keys();
+                    let keys = {
+                        let guard = secrets.lock().await;
+                        visible_secret_keys(&guard)
+                    };
                     let _ = tx.send(Message::SecretsLoaded(keys));
                     let _ = tx.send(Message::SetStatus(removed));
                 }
@@ -479,10 +514,15 @@ impl CommandBus {
         let connect_first = self.i18n.t("cmd-connect-before-deploy");
         let traefik_not_running = self.i18n.t("cmd-traefik-not-running");
         tokio::spawn(async move {
-            let token = {
-                let mgr = secrets.lock().await;
-                mgr.get(GITHUB_TOKEN_KEY).map(|v| v.to_string())
-            };
+            let account_id = gh_req.as_ref().and_then(|g| g.account_id);
+            let token = resolve_github_token(&secrets, account_id).await;
+            if gh_req.is_some() && token.is_none() {
+                let _ = tx.send(Message::DeployDone(Err(
+                    "Connect a GitHub account under Git Providers (browser OAuth), then pick it on the app"
+                        .into(),
+                )));
+                return;
+            }
 
             let mut guard = sessions.lock().await;
             let session = match guard.get_mut(&server_id) {
@@ -556,6 +596,7 @@ impl CommandBus {
                     body,
                     gh.compose_path.clone(),
                     DeploySource::GitHub {
+                        account_id: gh.account_id,
                         owner: gh.owner.clone(),
                         repo: gh.repo.clone(),
                         branch: gh.branch.clone(),
@@ -588,8 +629,7 @@ impl CommandBus {
                 mgr.list_keys()
                     .into_iter()
                     .filter_map(|k| {
-                        // Don't inject GITHUB_TOKEN into app containers.
-                        if k == GITHUB_TOKEN_KEY {
+                        if is_git_credential_key(&k) {
                             return None;
                         }
                         mgr.get(&k).map(|v| (k, v.to_string()))
@@ -688,10 +728,18 @@ impl CommandBus {
                 return;
             };
 
-            let token = {
-                let mgr = secrets.lock().await;
-                mgr.get(GITHUB_TOKEN_KEY).map(|v| v.to_string())
+            let account_id = match &app.source {
+                DeploySource::GitHub { account_id, .. } => *account_id,
+                _ => None,
             };
+            let token = resolve_github_token(&secrets, account_id).await;
+            if matches!(app.source, DeploySource::GitHub { .. }) && token.is_none() {
+                let _ = tx.send(Message::DeployDone(Err(
+                    "Connect a GitHub account under Git Providers (browser OAuth) for this app"
+                        .into(),
+                )));
+                return;
+            }
 
             let mut guard = sessions.lock().await;
             let session = match guard.get_mut(&app.server_id) {
@@ -725,6 +773,7 @@ impl CommandBus {
                     repo,
                     branch,
                     compose_path,
+                    ..
                 } => {
                     if let Err(e) = git_deploy::ensure_repo(
                         session,
@@ -764,7 +813,7 @@ impl CommandBus {
                         mgr.list_keys()
                             .into_iter()
                             .filter_map(|k| {
-                                if k == GITHUB_TOKEN_KEY {
+                                if is_git_credential_key(&k) {
                                     return None;
                                 }
                                 mgr.get(&k).map(|v| (k, v.to_string()))
@@ -821,18 +870,30 @@ impl CommandBus {
         });
     }
 
-    pub fn load_github_repos(&self) {
+    pub fn load_github_repos(&self, account_id: Option<Uuid>) {
         let tx = self.tx.clone();
         let secrets = self.secrets.clone();
+        let config = self.config.clone();
         tokio::spawn(async move {
-            let token = {
-                let mgr = secrets.lock().await;
-                mgr.get(GITHUB_TOKEN_KEY).map(|v| v.to_string())
-            };
-            let Some(token) = token.filter(|t| !t.is_empty()) else {
-                let _ = tx.send(Message::GitHubReposLoaded(Err(
-                    "Add GITHUB_TOKEN in Secrets (classic PAT with repo scope)".into(),
-                )));
+            let token = resolve_github_token(&secrets, account_id).await;
+            let Some(token) = token else {
+                let hint = {
+                    let cfg = config.lock().await;
+                    if account_id.is_some() && !cfg.has_git_account(account_id) {
+                        "GitHub account was removed — press c under Git Providers to reconnect in the browser"
+                            .into()
+                    } else if account_id
+                        .and_then(|id| cfg.git_account(id))
+                        .is_some()
+                    {
+                        "GitHub account token missing — reconnect under Git Providers (browser OAuth)"
+                            .into()
+                    } else {
+                        "Connect a GitHub account under Git Providers (opens browser / Device Flow)"
+                            .into()
+                    }
+                };
+                let _ = tx.send(Message::GitHubReposLoaded(Err(hint)));
                 return;
             };
             let result = github::list_repos(&token)
@@ -842,17 +903,19 @@ impl CommandBus {
         });
     }
 
-    pub fn load_github_branches(&self, owner: String, repo: String) {
+    pub fn load_github_branches(
+        &self,
+        account_id: Option<Uuid>,
+        owner: String,
+        repo: String,
+    ) {
         let tx = self.tx.clone();
         let secrets = self.secrets.clone();
         tokio::spawn(async move {
-            let token = {
-                let mgr = secrets.lock().await;
-                mgr.get(GITHUB_TOKEN_KEY).map(|v| v.to_string())
-            };
-            let Some(token) = token.filter(|t| !t.is_empty()) else {
+            let token = resolve_github_token(&secrets, account_id).await;
+            let Some(token) = token else {
                 let _ = tx.send(Message::GitHubBranchesLoaded(Err(
-                    "Add GITHUB_TOKEN in Secrets".into(),
+                    "Connect a GitHub account under Git Providers (browser OAuth)".into(),
                 )));
                 return;
             };
@@ -863,16 +926,93 @@ impl CommandBus {
         });
     }
 
+    pub fn git_connect_start(&self) {
+        let tx = self.tx.clone();
+        let config = self.config.clone();
+        let secrets = self.secrets.clone();
+        tokio::spawn(async move {
+            let client_id = {
+                let cfg = config.lock().await;
+                cfg.github_client_id()
+            };
+            let device = match github_oauth::request_device_code(&client_id).await {
+                Ok(d) => d,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let _ = tx.send(Message::GitDeviceStarted {
+                user_code: device.user_code.clone(),
+                verification_uri: device.verification_uri.clone(),
+            });
+            let _ = github_oauth::open_browser(&device.verification_uri);
+            let token = match github_oauth::wait_for_token(&client_id, &device).await {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let user = match github::fetch_user(&token).await {
+                Ok(u) => u,
+                Err(e) => {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            };
+            let existing_id = {
+                let cfg = config.lock().await;
+                cfg.git_accounts
+                    .iter()
+                    .find(|a| a.login == user.login)
+                    .map(|a| a.id)
+            };
+            let id = existing_id.unwrap_or_else(Uuid::new_v4);
+            let label = user
+                .name
+                .clone()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| user.login.clone());
+            let account = GitAccountMeta {
+                id,
+                provider: GitProvider::GitHub,
+                login: user.login.clone(),
+                label,
+                connected_at: chrono::Utc::now().to_rfc3339(),
+            };
+            {
+                let mut mgr = secrets.lock().await;
+                if let Err(e) = mgr.set(&git_account_token_key(id), &token) {
+                    let _ = tx.send(Message::GitConnectFailed(e.to_string()));
+                    return;
+                }
+            }
+            {
+                let mut cfg = config.lock().await;
+                cfg.upsert_git_account(account.clone());
+                let _ = cfg.save();
+            }
+            let _ = tx.send(Message::GitAccountConnected(account));
+        });
+    }
+
+    pub fn git_delete_account(&self, id: Uuid) {
+        let config = self.config.clone();
+        let secrets = self.secrets.clone();
+        tokio::spawn(async move {
+            {
+                let mut mgr = secrets.lock().await;
+                let _ = mgr.remove(&git_account_token_key(id));
+            }
+            let mut cfg = config.lock().await;
+            cfg.remove_git_account(id);
+            let _ = cfg.save();
+        });
+    }
+
     /// Poll auto_deploy apps; returns app ids that need redeploy.
     pub async fn poll_auto_deploy_candidates(&self) -> Vec<Uuid> {
-        let token = {
-            let mgr = self.secrets.lock().await;
-            mgr.get(GITHUB_TOKEN_KEY).map(|v| v.to_string())
-        };
-        let Some(token) = token.filter(|t| !t.is_empty()) else {
-            return Vec::new();
-        };
-
         let apps = {
             let cfg = self.config.lock().await;
             cfg.apps
@@ -889,12 +1029,16 @@ impl CommandBus {
                 continue;
             }
             let DeploySource::GitHub {
+                account_id,
                 owner,
                 repo,
                 branch,
                 ..
             } = &app.source
             else {
+                continue;
+            };
+            let Some(token) = resolve_github_token(&self.secrets, *account_id).await else {
                 continue;
             };
             match github::latest_commit_sha(&token, owner, repo, branch).await {
