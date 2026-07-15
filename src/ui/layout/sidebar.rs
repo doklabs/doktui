@@ -221,6 +221,7 @@ mod tests {
             crate::config::UiMode::Overlay,
             vec![],
             vec![],
+            vec![],
             theme,
             i18n,
             22,

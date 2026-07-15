@@ -6,12 +6,12 @@ brand-tagline-short = DokTUI · local TUI
 
 # Navigation
 nav-home = Home
-nav-projects = Projects
-nav-deployments = Deployments
+nav-servers-section = Servers
+nav-apps = Apps
 nav-monitoring = Monitoring
 nav-schedules = Schedules
 nav-navigation = NAVIGATION
-nav-servers = SERVERS
+nav-servers = TARGET
 nav-none-yet = (none yet)
 
 # Connection status
@@ -67,6 +67,7 @@ welcome-ssh-box-title = ◆ dedicated ssh key
 welcome-ssh-fingerprint = fp:
 welcome-ssh-copy = [c] copy
 form-add-server-title = Register SSH Server
+form-edit-server-title = Edit SSH Server
 form-add-server-hint = Tab/Shift+Tab • Enter save • Esc back
 hostkey-title = Unknown Host Key
 hostkey-none = No host key prompt active
@@ -98,14 +99,14 @@ home-active-server =
     Active server: { $name } @ { $host }:{ $port }
     Status: { $dot } connected
 
-    Use Projects to manage SSH servers.
-    Use Deployments to deploy apps.
+    Use Servers (2) for SSH machines.
+    Use Apps (3) for deployments — many apps per server.
 home-no-servers = No servers yet.
 
-    Go to Projects → press [a] to register an SSH server.
+    Go to Servers (2) → press [a] to register an SSH host.
 home-servers-registered =
     { $count } server(s) registered.
-    Select one under Projects.
+    Select a TARGET in the sidebar, then open Apps (3).
 home-achievement-label = ACHIEVEMENT
 home-achievement-https = Let's Encrypt cert issued · +50 XP
 home-deploy-panel = Quick deploy
@@ -116,31 +117,29 @@ home-deploy-network-attached = { $check } doktui-network attached
 home-deploy-traefik-route = { $check } traefik route → Host(`{ $domain }`) tls:le
 home-deploy-pulling = { $arrow } pulling image…
 
-# Projects / servers
-servers-title = SSH targets
+# Servers
+servers-title = SSH servers (machines)
 servers-shortcut-select = select
 servers-shortcut-connect = connect
 servers-shortcut-provision = provision
 servers-shortcut-add = add
-servers-shortcut-open = open
+servers-shortcut-edit = edit
+servers-shortcut-open = apps
 servers-shortcut-remove = remove
 servers-shortcut-back = back
 
-# Deployments hub
-deploy-hub-title = deploy & runtime
-deploy-hub-target = Target: { $name }
-deploy-hub-no-target = Target: (none — pick server in Projects)
-deploy-hub-item-deploy = [d] Deploy — compose or GitHub repo
-deploy-hub-item-apps = [a] Apps — saved deployments / redeploy
+# App tools hub (from Apps → t)
+deploy-hub-panel-title = App tools
+deploy-hub-title = tools for selected server
+deploy-hub-hint = These act on the TARGET server. Apps list is under nav [3].
+deploy-hub-target = Target server: { $name }
+deploy-hub-no-target = Target: (none — pick a server under Servers / sidebar TARGET)
+deploy-hub-item-deploy = [d] New app — open canvas (Compose or GitHub)
 deploy-hub-item-containers = [c] Containers — start/stop/restart
 deploy-hub-item-logs = [l] Logs — stream container output
 deploy-hub-item-secrets = [s] Secrets — env vars (encrypted locally)
-deploy-hub-item-editor = [e] Editor — edit compose file
-deploy-hub-shortcut-deploy = deploy
-deploy-hub-shortcut-containers = containers
-deploy-hub-shortcut-logs = logs
-deploy-hub-shortcut-secrets = secrets
-deploy-hub-shortcut-editor = editor
+deploy-hub-item-git = [g] Git Providers — connect GitHub accounts (OAuth)
+deploy-hub-item-editor = [e] Editor — edit compose buffer
 deploy-hub-shortcut-nav = navigate
 deploy-hub-shortcut-open = open
 
@@ -149,19 +148,22 @@ deploy-title = docker compose + traefik routing
 deploy-title-mode = deploy · { $mode }
 deploy-mode-compose = Compose paste
 deploy-mode-github = GitHub
-deploy-mode-hint = Press m to switch Compose ↔ GitHub. For GitHub: add GITHUB_TOKEN in Secrets, then r to load repos.
+deploy-mode-hint = Press m to switch Compose ↔ GitHub. Connect GitHub under Git Providers (g) — browser OAuth — then ↑↓ to pick account/repo.
 deploy-field-remote-dir = Remote dir
 deploy-field-domain = Domain (or *.example.com)
 deploy-field-port = Port
 deploy-field-service = Service
 deploy-field-https = HTTPS (Let's Encrypt)
 deploy-field-compose = Compose
-deploy-field-repo = Repo (j/k or type owner/repo)
+deploy-field-account = Account (↑↓)
+deploy-field-repo = Repo (↑↓)
 deploy-field-branch = Branch
 deploy-field-compose-path = Compose path
 deploy-field-app-name = App name
 deploy-field-auto-deploy = Auto-deploy (poll while open)
-deploy-gh-no-repos = (press r to load repos, or type owner/repo)
+deploy-gh-no-account = (connect GitHub under Git Providers)
+deploy-gh-pick-account = (↑↓ to pick account)
+deploy-gh-no-repos = (press r / Ctrl+R to load repos)
 deploy-on = on
 deploy-off = off
 deploy-compose-editing = (editing — press e for canvas editor)
@@ -173,23 +175,107 @@ deploy-shortcut-editor = editor
 deploy-shortcut-mode = mode
 deploy-shortcut-refresh = load repos
 
-# Apps list
+# Apps list (top-level nav)
 apps-panel-title = Apps
-apps-title = saved deployments
-apps-poll-hint = Auto-deploy polls GitHub ~every 60s while DokTUI is open (not a 24/7 webhook).
-apps-empty = no apps yet — Deploy from GitHub or Compose to create one
+apps-title = applications (many per server)
+apps-target-server = Deploy target: { $name } ({ $host }) — ● = on this server
+apps-target-none = Deploy target: (none — pick TARGET in sidebar or Servers [2])
+apps-empty = No apps yet. Press [n] or Enter for the create wizard (Compose or GitHub). One server can host many apps (different remote dirs).
 apps-source-compose = compose
 apps-auto-on = auto
 apps-auto-off = manual
 apps-shortcut-nav = select
+apps-shortcut-new = new app
+apps-shortcut-open = open canvas
 apps-shortcut-redeploy = redeploy
+apps-shortcut-tools = server tools
 apps-shortcut-delete = delete
-apps-shortcut-deploy = new deploy
+apps-shortcut-servers = servers
+apps-shortcut-back-list = apps list
+
+# New app wizard (Dokploy-style create flow)
+wizard-panel-title = Create service
+wizard-step-type = Type
+wizard-step-identity = Identity
+wizard-step-account = Account
+wizard-step-repo = Repository
+wizard-type-title = Create Service
+wizard-type-subtitle = Choose what to add to this server
+wizard-type-hint = Like Dokploy — pick a service type, then name it.
+wizard-type-compose = Compose
+wizard-type-compose-desc = Paste or edit a docker-compose.yml and deploy over SSH
+wizard-type-application = Application
+wizard-type-application-desc = Deploy from a GitHub repository (clone/pull on the server)
+wizard-identity-title-compose = Create Compose
+wizard-identity-title-app = Create Application
+wizard-identity-subtitle = Assign a name and description to your service
+wizard-field-name = Name
+wizard-field-app-name = App name
+wizard-field-description = Description
+wizard-field-description-placeholder = Description of your service…
+wizard-identity-summary = Will open the app canvas · { $mode } · TARGET { $server }. Configure provider, domain, then Deploy.
+wizard-account-title = GitHub account
+wizard-account-subtitle = Choose which connected account to deploy from
+wizard-account-hint = ↑↓ select · Enter continue · c connect another account
+wizard-account-empty = No GitHub accounts connected yet.
+wizard-account-connect-cta = Connect GitHub (opens Git Providers)
+wizard-account-none = (no account)
+wizard-repo-title = Repository
+wizard-repo-subtitle = Pick a repository from the selected account
+wizard-repo-account = Account
+wizard-repo-hint = ↑↓ select · r refresh · Enter create
+wizard-repo-empty = No repositories loaded. Press r to refresh, or connect an account first.
+wizard-create = Create
+wizard-shortcut-select = choose
+wizard-shortcut-next = continue
+wizard-shortcut-cancel = cancel
+wizard-shortcut-field = next field
+wizard-shortcut-create = create
+wizard-shortcut-back = previous step
+wizard-shortcut-connect = connect GitHub
+wizard-shortcut-refresh = refresh repos
+error-wizard-name-required = Name is required
+error-git-account-required = Connect GitHub under Git Providers first (opens browser)
+status-wizard-compose-created = Compose created — configure provider, then Deploy
+status-wizard-app-created = Application created — configure domain, then Deploy
+
+# App canvas (Dokploy-style per-app screen)
+canvas-panel-title = App
+canvas-draft-name = New app
+canvas-new-id = draft
+canvas-subtitle = { $mode } · { $dir }
+canvas-deploying = deploying…
+canvas-ready = ready to deploy
+canvas-tab-general = General
+canvas-tab-domain = Domain
+canvas-tab-env = Env
+canvas-tab-deploy = Deploy
+canvas-tab-logs = Logs
+canvas-general-hint = Provider — Ctrl+M switches Compose ↔ GitHub. Type freely in fields; Tab moves between them.
+canvas-domain-hint = Traefik routing — leave domain empty for no public route.
+canvas-env-hint = Local secrets injected at deploy. GitHub uses OAuth accounts under Git Providers (not env tokens). Press s to manage.
+canvas-env-empty = No secrets yet. Press s to open Secrets.
+canvas-deploy-title = deploy summary
+canvas-deploy-hint = Ctrl+D deploy · r redeploy (saved apps) · Esc back to Apps
+canvas-summary-server = Server: { $value }
+canvas-summary-source = Source: { $value }
+canvas-summary-dir = Remote dir: { $value }
+canvas-summary-domain = Domain: { $value }
+canvas-summary-auto = Auto-deploy: { $value }
+canvas-no-domain = (none)
+canvas-logs-title = container logs
+canvas-logs-offline = Connect the TARGET server, then reopen this tab to load logs.
+canvas-logs-empty = No log lines yet. Select a container under App tools (t) or connect and refresh.
+canvas-action-deploy = deploy
+canvas-action-redeploy = redeploy
+canvas-action-back = apps list
+canvas-shortcut-pick = cycle account/repo/branch (↑↓)
+canvas-shortcut-secrets = secrets
 
 # Containers
 containers-title = docker ps
 containers-loading = loading…
-containers-empty = no containers — connect to a server under Projects first
+containers-empty = no containers — connect under Servers (2) first
 containers-shortcut-select = select
 containers-shortcut-start = start
 containers-shortcut-stop = stop
@@ -213,7 +299,7 @@ monitoring-loading = Server: { $server }
     Loading metrics…
 monitoring-not-connected = Server: { $server }
 
-    Not connected — press [c] under Projects to connect.
+    Not connected — press [c] under Servers to connect.
 monitoring-no-containers = Server: { $server }
 
     No running containers to measure.
@@ -226,7 +312,7 @@ monitoring-col-mem-pct = MEM%
 # Schedules
 schedules-title = restart policies & cron jobs
 schedules-loading = Loading…
-schedules-no-containers = No containers — connect to a server under Projects.
+schedules-no-containers = No containers — connect to a server under Servers.
 schedules-no-jobs =
     No cron jobs yet.
     Press a to schedule container restarts or compose redeploys.
@@ -254,7 +340,7 @@ schedules-status-off = off
 
 # Secrets
 secrets-title = encrypted local store
-secrets-empty = no secrets yet — add one below (use GITHUB_TOKEN for GitHub deploys)
+secrets-empty = no secrets yet — add one below (GitHub auth is under Git Providers)
 secrets-key = Key:
 secrets-value = Value:
 secrets-shortcut-tab = field
@@ -297,18 +383,38 @@ status-provisioned = server provisioned successfully
 status-cron-saved = cron job saved
 status-cron-deleted = cron job deleted
 status-server-removed = Server '{ $name }' removed
+status-server-updated = server updated
 status-connecting = connecting…
 status-deploy-warnings = deploy completed with warnings
 status-loading-github = loading GitHub repositories…
 status-github-repos-loaded = GitHub repositories loaded
 status-app-removed = app removed
 status-auto-deploy = new commit detected — redeploying…
+status-git-account-removed = GitHub account removed
+status-git-connected = Connected GitHub account @{ $login }
 achievement-first-https = First HTTPS Deploy
+
+# Git Providers
+git-panel-title = Git Providers
+git-title = Git Providers
+git-subtitle = Connect your Git provider for authentication
+git-available = Available
+git-connect-github = Connect GitHub
+git-connected = Connected accounts
+git-empty = No accounts yet. Press c to connect GitHub — your browser opens for login.
+git-shortcut-connect = connect (browser)
+git-shortcut-delete = delete account
+git-shortcut-cancel-device = cancel
+git-device-title = Connect GitHub
+git-device-hint = Your browser should open. Enter this code at the URL below, then authorize DokTUI.
+git-device-code = Your one-time code
+git-device-starting = Starting GitHub Device Flow…
+git-device-waiting = Waiting for authorization in browser…
 
 # App errors
 error-github-repo-required = GitHub owner and repo are required
 error-clipboard = clipboard copy failed: { $err }
-error-select-server = select a server under Projects first
+error-select-server = select a server under Servers (2) first
 error-name-host-required = name and host are required
 error-save-server = failed to save server
 error-schedule-label = schedule label is required

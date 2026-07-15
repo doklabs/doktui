@@ -7,9 +7,22 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
+use uuid::Uuid;
+
 use crate::config::paths;
 
 const NONCE_LEN: usize = 12;
+
+/// Secrets key for a connected Git account access token.
+pub fn git_account_token_key(id: Uuid) -> String {
+    format!("git.account.{id}.token")
+}
+
+/// True if this secret must never be injected into compose env.
+pub fn is_git_credential_key(key: &str) -> bool {
+    // OAuth tokens must not be injected into remote compose env.
+    key.starts_with("git.account.") || key == "GITHUB_TOKEN"
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct SecretStore {

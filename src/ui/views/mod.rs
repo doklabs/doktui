@@ -1,5 +1,8 @@
+pub mod app_canvas;
 pub mod apps;
 pub mod confirm;
+pub mod git_providers;
+pub mod new_app_wizard;
 pub mod containers;
 pub mod deploy;
 pub mod deployments_hub;

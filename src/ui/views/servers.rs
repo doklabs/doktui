@@ -11,7 +11,7 @@ use crate::ui::theme::{header_line, muted_style, panel_block, shortcut_line, Rol
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let theme = &state.theme;
     let i18n = &state.i18n;
-    let panel_title = format!(" {} ", i18n.t("nav-projects"));
+    let panel_title = format!(" {} ", i18n.t("nav-servers-section"));
     let block = panel_block(&panel_title, theme);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -73,6 +73,7 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) 
                 ("j/k", &i18n.t("servers-shortcut-select")),
                 ("Enter", &i18n.t("servers-shortcut-open")),
                 ("a", &i18n.t("servers-shortcut-add")),
+                ("e", &i18n.t("servers-shortcut-edit")),
                 ("c", &i18n.t("servers-shortcut-connect")),
                 ("p", &i18n.t("servers-shortcut-provision")),
                 ("x", &i18n.t("servers-shortcut-remove")),
