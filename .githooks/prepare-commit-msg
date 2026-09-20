@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# Strip bot co-authors and AI generated tags before the editor opens
+sed -i -E '/Co-[a-zA-Z]+-By:.*(\[bot\]|devin|ai)/Id' "$1"
+sed -i -E '/Generated with \[Devin\]/Id' "$1"
